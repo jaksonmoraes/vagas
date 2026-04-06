@@ -48,17 +48,19 @@ def mostrar_modal_descricao(titulo, texto):
 with st.sidebar:
     st.header("⚙️ Gestão de Dados")
     
-    # Seção de Importação
     st.subheader("📥 Importar Dados")
     arquivo_upload = st.file_uploader("Suba seu arquivo vagas.csv", type="csv")
     
     if arquivo_upload is not None:
         try:
             df_importado = pd.read_csv(arquivo_upload)
+            # CONVERSÃO CRUCIAL: Transforma a coluna Data de texto para formato datetime
+            if "Data" in df_importado.columns:
+                df_importado["Data"] = pd.to_datetime(df_importado["Data"]).dt.date
+            
             colunas_necessarias = ["Vaga", "Data", "Plataforma", "Empresa"]
             if all(col in df_importado.columns for col in colunas_necessarias):
                 st.session_state.meus_dados = df_importado
-                # Sincroniza as plataformas do arquivo com a lista da sessão
                 plataformas_arquivo = df_importado['Plataforma'].unique().tolist()
                 for p in plataformas_arquivo:
                     if p not in st.session_state.plataformas:
@@ -70,8 +72,6 @@ with st.sidebar:
             st.error(f"Erro ao processar arquivo: {e}")
 
     st.divider()
-
-    # Gestão de Plataformas
     st.subheader("Cadastrar Plataformas")
     st.text_input("Nova plataforma:", key="temp_plataforma", on_change=adicionar_plataforma)
     if st.session_state.plataformas:
@@ -83,8 +83,6 @@ with st.sidebar:
                 st.rerun()
     
     st.divider()
-    
-    # Exportação
     st.subheader("📤 Exportar Dados")
     csv_data = st.session_state.meus_dados.to_csv(index=False).encode('utf-8')
     st.download_button("💾 Baixar CSV Atualizado", data=csv_data, file_name='vagas.csv', mime='text/csv')
@@ -124,18 +122,22 @@ with st.expander("➕ Registrar Nova Candidatura", expanded=True):
                 st.success(f"Candidatura salva!")
                 st.rerun()
 
-# --- VISUALIZAÇÃO DOS DADOS (REORDENADO) ---
+# --- VISUALIZAÇÃO DOS DADOS ---
 st.subheader("📊 Suas Candidaturas")
 
 if not st.session_state.meus_dados.empty:
     ordem_colunas = ["Vaga", "Data", "Plataforma", "Empresa", "Descricao", "Link Vaga", "Recrutador", "Contato Recrutador", "Site Empresa"]
     
+    # IMPORTANTE: Garantimos que a coluna Data esteja no formato correto antes do editor
+    df_exibicao = st.session_state.meus_dados[ordem_colunas].copy()
+    df_exibicao["Data"] = pd.to_datetime(df_exibicao["Data"]).dt.date
+
     st.data_editor(
-        st.session_state.meus_dados[ordem_colunas],
+        df_exibicao,
         column_config={
             "Data": st.column_config.DateColumn("Data", format="DD/MM/YYYY"),
-            "Link Vaga": st.column_config.LinkColumn("Link Vaga"),
-            "Site Empresa": st.column_config.LinkColumn("Site Empresa"),
+            "Link Vaga": st.column_config.LinkColumn("Link da Vaga"),
+            "Site Empresa": st.column_config.LinkColumn("Site da Empresa"),
             "Descricao": st.column_config.TextColumn("Descrição (Prévia)", width="small")
         },
         use_container_width=True,
@@ -143,8 +145,8 @@ if not st.session_state.meus_dados.empty:
         key="editor_vagas"
     )
 
-    st.info("💡 Selecione uma vaga abaixo e clique no botão para ler a descrição completa:")
-    vaga_idx = st.selectbox("Vaga selecionada para visualização:", 
+    st.info("💡 Selecione uma vaga para ver os detalhes:")
+    vaga_idx = st.selectbox("Vaga selecionada:", 
                             options=range(len(st.session_state.meus_dados)),
                             format_func=lambda x: f"{st.session_state.meus_dados.iloc[x]['Vaga']} @ {st.session_state.meus_dados.iloc[x]['Empresa']}")
     
@@ -159,7 +161,6 @@ if not st.session_state.meus_dados.empty:
     col_g1, col_g2 = st.columns(2)
     
     with col_g1:
-        # Plotly usa 'count' como padrão no reset_index em versões recentes
         df_p = st.session_state.meus_dados['Plataforma'].value_counts().reset_index()
         df_p.columns = ['Plataforma', 'Total']
         fig1 = px.pie(df_p, values='Total', names='Plataforma', title='Vagas por Plataforma', hole=0.4)
