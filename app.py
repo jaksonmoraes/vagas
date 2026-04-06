@@ -84,17 +84,13 @@ def tela_acesso():
                             with conn.session as s:
                                 s.execute(text("INSERT INTO usuarios (email, senha_hash) VALUES (:e, :s)"), {"e": n_email, "s": senha_h})
                                 s.commit()
-                            st.success("Conta criada com sucesso! Faça login.")
-                        except:
-                            st.error("Este email já está em uso.")
-
-        with aba_recuperar:
-            email_rec = st.text_input("Email cadastrado")
-            if st.button("Enviar e-mail de ajuda"):
-                if send_recovery_email(email_rec):
-                    st.success("Instruções enviadas para seu e-mail!")
-                else:
-                    st.error("Falha ao enviar e-mail. Verifique os Secrets.")
+                            st.success("Conta criada! Faça login.")
+                        except Exception as e:
+                            # Aqui pegamos o erro real do banco
+                            if "unique constraint" in str(e).lower():
+                                st.error("Este email já está em uso.")
+                            else:
+                                st.error(f"Erro de conexão com o banco: {str(e)[:100]}")
 
 # --- DASHBOARD PRINCIPAL (LOGADO) ---
 if st.session_state.user_id is None:
