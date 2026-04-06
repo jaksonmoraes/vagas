@@ -3,143 +3,66 @@ import pandas as pd
 from datetime import date
 import plotly.express as px
 
-st.set_page_config(page_title="My Job Tracker", layout="wide")
+# ... (Mantenha seu set_page_config, CSS da barra de rolagem e inicialização de sessão aqui) ...
 
-# --- INJEÇÃO DE CSS PARA BARRA DE ROLAGEM VISÍVEL ---
-st.markdown("""
-    <style>
-    /* Estiliza a barra de rolagem globalmente para navegadores baseados em Webkit (Chrome, Edge, Safari) */
-    ::-webkit-scrollbar {
-        width: 10px;
-        height: 10px; /* Altura da barra horizontal */
-    }
+# --- FUNÇÃO DO MODAL (DIÁLOGO) ---
+@st.dialog("Descrição da Vaga")
+def mostrar_descricao(texto):
+    st.write(texto)
+    if st.button("Fechar"):
+        st.rerun()
 
-    ::-webkit-scrollbar-track {
-        background: #f1f1f1; /* Cor do fundo da trilha */
-        border-radius: 10px;
-    }
+# --- INTERFACE PRINCIPAL ---
+# ... (Mantenha seu formulário de cadastro aqui) ...
 
-    ::-webkit-scrollbar-thumb {
-        background: #ccc; /* Cor da barra em si (cinza claro/branco) */
-        border-radius: 10px;
-        border: 2px solid #f1f1f1; /* Cria um espaçamento para parecer mais limpo */
-    }
-
-    ::-webkit-scrollbar-thumb:hover {
-        background: #888; /* Cor quando passa o mouse */
-    }
-
-    /* Força a visibilidade em navegadores Firefox */
-    * {
-        scrollbar-width: thin;
-        scrollbar-color: #ccc #f1f1f1;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-
-# --- INICIALIZAÇÃO DA SESSÃO ---
-if 'meus_dados' not in st.session_state:
-    st.session_state.meus_dados = pd.DataFrame(columns=[
-        "Vaga", "Data", "Empresa", "Site Empresa", 
-        "Plataforma", "Salario", "Link Vaga", 
-        "Recrutador", "Contato Recrutador", "Descricao"
-    ])
-
-if 'plataformas' not in st.session_state:
-    st.session_state.plataformas = []
-
-# --- FUNÇÕES DE APOIO ---
-def adicionar_plataforma():
-    nova_p = st.session_state.temp_plataforma.strip()
-    if nova_p:
-        if nova_p not in st.session_state.plataformas:
-            st.session_state.plataformas.append(nova_p)
-            st.session_state.temp_plataforma = "" # Limpa o campo após adicionar
-        else:
-            st.warning(f"A plataforma '{nova_p}' já está cadastrada.")
-
-def remover_plataforma(nome):
-    st.session_state.plataformas.remove(nome)
-
-# --- SIDEBAR (GESTÃO DE PLATAFORMAS) ---
-with st.sidebar:
-    st.header("⚙️ Configurações")
-    st.subheader("Cadastrar Plataformas")
-    st.info("Digite o nome da plataforma (ex: LinkedIn) e aperte Enter.")
-    
-    # Campo de digitação com trigger automático
-    st.text_input("Nova plataforma:", key="temp_plataforma", on_change=adicionar_plataforma)
-    
-    if st.session_state.plataformas:
-        st.write("---")
-        st.write("**Plataformas Ativas:**")
-        for p in st.session_state.plataformas:
-            cols = st.columns([4, 1])
-            cols[0].write(f"• {p}")
-            if cols[1].button("−", key=f"del_{p}"):
-                remover_plataforma(p)
-                st.rerun()
-    else:
-        st.warning("Nenhuma plataforma cadastrada ainda.")
-
-    st.divider()
-    csv = st.session_state.meus_dados.to_csv(index=False).encode('utf-8')
-    st.download_button("💾 Baixar Dados (CSV)", data=csv, file_name='minhas_vagas.csv', mime='text/csv')
-
-# --- FORMULÁRIO DE REGISTRO ---
-st.title("💼 Tracker de Candidaturas")
-
-with st.expander("➕ Registrar Nova Candidatura", expanded=True):
-    with st.form("form_vaga", clear_on_submit=True):
-        c1, c2 = st.columns(2)
-        with c1:
-            vaga = st.text_input("Vaga (Nome e Cargo)*")
-            empresa = st.text_input("Empresa")
-            site_empresa = st.text_input("Site da Empresa (URL)")
-        with c2:
-            data_cand = st.date_input("Data da Candidatura", date.today())
-            # O Selectbox agora consome a lista da sidebar
-            plataforma_sel = st.selectbox("Selecionar Plataforma*", options=[""] + st.session_state.plataformas)
-            salario = st.number_input("Salário (R$)", min_value=0.0, step=100.0)
-
-        link_vaga = st.text_input("Link da Vaga")
-        recrutador = st.text_input("Nome do Recrutador")
-        contato = st.text_input("Contato (Email/Tel)")
-        descricao = st.text_area("Descrição da Vaga", max_chars=1500)
-        
-        submitted = st.form_submit_button("Salvar Candidatura")
-        
-        if submitted:
-            if not vaga:
-                st.error("O campo 'Vaga' é obrigatório.")
-            elif not plataforma_sel:
-                st.error("Você precisa selecionar uma plataforma. Se a lista estiver vazia, cadastre uma na barra lateral à esquerda.")
-            else:
-                nova_linha = pd.DataFrame([{
-                    "Vaga": vaga, "Data": data_cand, "Empresa": empresa,
-                    "Site Empresa": site_empresa, "Plataforma": plataforma_sel, 
-                    "Salario": salario, "Link Vaga": link_vaga,
-                    "Recrutador": recrutador, "Contato Recrutador": contato, "Descricao": descricao
-                }])
-                st.session_state.meus_dados = pd.concat([st.session_state.meus_dados, nova_linha], ignore_index=True)
-                st.success(f"Candidatura para '{vaga}' salva!")
-                st.rerun()
-
-# --- VISUALIZAÇÃO DOS DADOS ---
+# --- VISUALIZAÇÃO DOS DADOS REORDENADOS ---
 st.subheader("📊 Suas Candidaturas")
 
 if not st.session_state.meus_dados.empty:
+    # 1. REORDENAÇÃO DAS COLUNAS
+    ordem_colunas = [
+        "Vaga", "Data", "Plataforma", "Empresa", "Descricao", 
+        "Link Vaga", "Recrutador", "Contato Recrutador", "Site Empresa"
+    ]
+    
+    # Garantir que o DF siga a ordem para exibição
+    df_ordenado = st.session_state.meus_dados[ordem_colunas]
+
+    # 2. TABELA EDITÁVEL
     st.data_editor(
-        st.session_state.meus_dados,
+        df_ordenado,
         column_config={
-            "Site Empresa": st.column_config.LinkColumn("Site Empresa"),
-            "Link Vaga": st.column_config.LinkColumn("Link Vaga"),
+            "Vaga": st.column_config.TextColumn("Vaga", width="medium"),
+            "Data": st.column_config.DateColumn("Data", format="DD/MM/YYYY"),
+            "Plataforma": "Plataforma",
+            "Empresa": "Empresa",
+            "Descricao": st.column_config.TextColumn("Descrição (Visualização resumida)", width="small"),
+            "Link Vaga": st.column_config.LinkColumn("Link da Vaga"),
+            "Recrutador": "Recrutador",
+            "Contato Recrutador": "Contato",
+            "Site Empresa": st.column_config.LinkColumn("Site da Empresa"),
         },
         use_container_width=True,
-        num_rows="dynamic"
+        num_rows="dynamic",
+        key="editor_vagas"
     )
-else:
-    st.info("Nenhuma vaga registrada. Use o formulário acima para começar.")
+
+    # 3. MODAL DE FOCO (Workaround para focar na descrição)
+    st.write("---")
+    st.info("💡 Para ler a descrição completa em foco, selecione a vaga abaixo:")
+    
+    # Criamos um seletor para abrir o modal de forma limpa
+    vaga_para_ver = st.selectbox(
+        "Visualizar detalhes de:", 
+        options=range(len(st.session_state.meus_dados)),
+        format_func=lambda x: f"{st.session_state.meus_dados.iloc[x]['Vaga']} - {st.session_state.meus_dados.iloc[x]['Empresa']}"
+    )
+    
+    if st.button("🔍 Abrir Detalhes em Foco"):
+        texto_completo = st.session_state.meus_dados.iloc[vaga_para_ver]['Descricao']
+        mostrar_descricao(texto_completo if texto_completo else "Nenhuma descrição cadastrada.")
+
+# --- GRÁFICOS (Mantenha seu código de gráficos aqui) ---
 
 
 # ... (seu código anterior da tabela)
