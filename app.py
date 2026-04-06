@@ -1,14 +1,12 @@
 import streamlit as st
 import pandas as pd
 from datetime import date
-from turtle import st
-
-
 import plotly.express as px
 
+# Configuração da página
 st.set_page_config(page_title="My Job Tracker", layout="wide")
 
-# --- INJEÇÃO DE CSS PARA BARRA DE ROLAGEM ---
+# --- INJEÇÃO DE CSS PARA BARRA DE ROLAGEM VISÍVEL ---
 st.markdown("""
     <style>
     ::-webkit-scrollbar { width: 10px; height: 10px; }
@@ -42,7 +40,7 @@ def remover_plataforma(nome):
 @st.dialog("Detalhes da Vaga")
 def mostrar_modal_descricao(titulo, texto):
     st.subheader(titulo)
-    st.write(texto if texto else "Sem descrição.")
+    st.write(texto if texto else "Nenhuma descrição detalhada fornecida.")
     if st.button("Fechar"):
         st.rerun()
 
@@ -50,27 +48,26 @@ def mostrar_modal_descricao(titulo, texto):
 with st.sidebar:
     st.header("⚙️ Gestão de Dados")
     
-    # NOVO: Seção de Importação
+    # Seção de Importação
     st.subheader("📥 Importar Dados")
     arquivo_upload = st.file_uploader("Suba seu arquivo vagas.csv", type="csv")
     
     if arquivo_upload is not None:
         try:
             df_importado = pd.read_csv(arquivo_upload)
-            # Verifica se as colunas batem para evitar erros
             colunas_necessarias = ["Vaga", "Data", "Plataforma", "Empresa"]
             if all(col in df_importado.columns for col in colunas_necessarias):
                 st.session_state.meus_dados = df_importado
-                # Atualiza a lista de plataformas baseada no arquivo importado
-                plataformas_do_arquivo = df_importado['Plataforma'].unique().tolist()
-                for p in plataformas_do_arquivo:
+                # Sincroniza as plataformas do arquivo com a lista da sessão
+                plataformas_arquivo = df_importado['Plataforma'].unique().tolist()
+                for p in plataformas_arquivo:
                     if p not in st.session_state.plataformas:
                         st.session_state.plataformas.append(p)
-                st.success("Dados carregados com sucesso!")
+                st.success("Dados carregados!")
             else:
-                st.error("O arquivo não parece ter o formato correto.")
+                st.error("O arquivo não possui as colunas necessárias.")
         except Exception as e:
-            st.error(f"Erro ao ler arquivo: {e}")
+            st.error(f"Erro ao processar arquivo: {e}")
 
     st.divider()
 
@@ -89,10 +86,10 @@ with st.sidebar:
     
     # Exportação
     st.subheader("📤 Exportar Dados")
-    csv = st.session_state.meus_dados.to_csv(index=False).encode('utf-8')
-    st.download_button("💾 Baixar CSV Atualizado", data=csv, file_name='vagas.csv', mime='text/csv')
+    csv_data = st.session_state.meus_dados.to_csv(index=False).encode('utf-8')
+    st.download_button("💾 Baixar CSV Atualizado", data=csv_data, file_name='vagas.csv', mime='text/csv')
 
-# --- FORMULÁRIO DE CADASTRO (PRESERVADO) ---
+# --- FORMULÁRIO DE CADASTRO ---
 st.title("💼 Tracker de Candidaturas")
 
 with st.expander("➕ Registrar Nova Candidatura", expanded=True):
@@ -124,14 +121,13 @@ with st.expander("➕ Registrar Nova Candidatura", expanded=True):
                     "Recrutador": recrutador, "Contato Recrutador": contato, "Site Empresa": site_empresa
                 }])
                 st.session_state.meus_dados = pd.concat([st.session_state.meus_dados, nova_linha], ignore_index=True)
-                st.success(f"Candidatura para '{vaga}' salva!")
+                st.success(f"Candidatura salva!")
                 st.rerun()
 
 # --- VISUALIZAÇÃO DOS DADOS (REORDENADO) ---
 st.subheader("📊 Suas Candidaturas")
 
 if not st.session_state.meus_dados.empty:
-    # A ordem das colunas abaixo segue exatamente o que você solicitou
     ordem_colunas = ["Vaga", "Data", "Plataforma", "Empresa", "Descricao", "Link Vaga", "Recrutador", "Contato Recrutador", "Site Empresa"]
     
     st.data_editor(
@@ -147,9 +143,8 @@ if not st.session_state.meus_dados.empty:
         key="editor_vagas"
     )
 
-    # Botão para abrir o Modal de Foco
-    st.info("💡 Selecione uma vaga para visualizar a descrição completa em foco:")
-    vaga_idx = st.selectbox("Vaga selecionada:", 
+    st.info("💡 Selecione uma vaga abaixo e clique no botão para ler a descrição completa:")
+    vaga_idx = st.selectbox("Vaga selecionada para visualização:", 
                             options=range(len(st.session_state.meus_dados)),
                             format_func=lambda x: f"{st.session_state.meus_dados.iloc[x]['Vaga']} @ {st.session_state.meus_dados.iloc[x]['Empresa']}")
     
@@ -164,8 +159,10 @@ if not st.session_state.meus_dados.empty:
     col_g1, col_g2 = st.columns(2)
     
     with col_g1:
+        # Plotly usa 'count' como padrão no reset_index em versões recentes
         df_p = st.session_state.meus_dados['Plataforma'].value_counts().reset_index()
-        fig1 = px.pie(df_p, values='count', names='Plataforma', title='Vagas por Plataforma', hole=0.4)
+        df_p.columns = ['Plataforma', 'Total']
+        fig1 = px.pie(df_p, values='Total', names='Plataforma', title='Vagas por Plataforma', hole=0.4)
         st.plotly_chart(fig1, use_container_width=True)
         
     with col_g2:
