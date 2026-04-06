@@ -21,31 +21,39 @@ def adicionar_plataforma():
     if nova_p:
         if nova_p not in st.session_state.plataformas:
             st.session_state.plataformas.append(nova_p)
-            st.session_state.temp_plataforma = "" 
+            st.session_state.temp_plataforma = "" # Limpa o campo após adicionar
         else:
             st.warning(f"A plataforma '{nova_p}' já está cadastrada.")
 
 def remover_plataforma(nome):
     st.session_state.plataformas.remove(nome)
 
-# --- SIDEBAR ---
+# --- SIDEBAR (GESTÃO DE PLATAFORMAS) ---
 with st.sidebar:
-    st.header("📂 Configurações")
-    st.subheader("Minhas Plataformas")
-    st.text_input("Nova plataforma (Enter para salvar)", key="temp_plataforma", on_change=adicionar_plataforma)
+    st.header("⚙️ Configurações")
+    st.subheader("Cadastrar Plataformas")
+    st.info("Digite o nome da plataforma (ex: LinkedIn) e aperte Enter.")
     
-    for p in st.session_state.plataformas:
-        cols = st.columns([4, 1])
-        cols[0].write(p)
-        if cols[1].button("−", key=f"del_{p}"):
-            remover_plataforma(p)
-            st.rerun()
+    # Campo de digitação com trigger automático
+    st.text_input("Nova plataforma:", key="temp_plataforma", on_change=adicionar_plataforma)
+    
+    if st.session_state.plataformas:
+        st.write("---")
+        st.write("**Plataformas Ativas:**")
+        for p in st.session_state.plataformas:
+            cols = st.columns([4, 1])
+            cols[0].write(f"• {p}")
+            if cols[1].button("−", key=f"del_{p}"):
+                remover_plataforma(p)
+                st.rerun()
+    else:
+        st.warning("Nenhuma plataforma cadastrada ainda.")
 
     st.divider()
     csv = st.session_state.meus_dados.to_csv(index=False).encode('utf-8')
-    st.download_button("💾 Baixar CSV", data=csv, file_name='vagas.csv', mime='text/csv')
+    st.download_button("💾 Baixar Dados (CSV)", data=csv, file_name='minhas_vagas.csv', mime='text/csv')
 
-# --- FORMULÁRIO ---
+# --- FORMULÁRIO DE REGISTRO ---
 st.title("💼 Tracker de Candidaturas")
 
 with st.expander("➕ Registrar Nova Candidatura", expanded=True):
@@ -54,15 +62,14 @@ with st.expander("➕ Registrar Nova Candidatura", expanded=True):
         with c1:
             vaga = st.text_input("Vaga (Nome e Cargo)*")
             empresa = st.text_input("Empresa")
-            site_empresa = st.text_input("Site da Empresa", placeholder="https://www.empresa.com")
+            site_empresa = st.text_input("Site da Empresa (URL)")
         with c2:
-            data_cand = st.date_input("Data", date.today())
-            plataforma_sel = st.selectbox("Plataforma", [""] + st.session_state.plataformas)
-            salario = st.number_input("Salário", min_value=0.0, step=100.0)
+            data_cand = st.date_input("Data da Candidatura", date.today())
+            # O Selectbox agora consome a lista da sidebar
+            plataforma_sel = st.selectbox("Selecionar Plataforma*", options=[""] + st.session_state.plataformas)
+            salario = st.number_input("Salário (R$)", min_value=0.0, step=100.0)
 
         link_vaga = st.text_input("Link da Vaga")
-        
-        # CAMPOS AGORA LIBERADOS PARA DIGITAÇÃO
         recrutador = st.text_input("Nome do Recrutador")
         contato = st.text_input("Contato (Email/Tel)")
         descricao = st.text_area("Descrição da Vaga", max_chars=1500)
@@ -70,8 +77,10 @@ with st.expander("➕ Registrar Nova Candidatura", expanded=True):
         submitted = st.form_submit_button("Salvar Candidatura")
         
         if submitted:
-            if not vaga or not plataforma_sel:
-                st.error("Preencha a Vaga e selecione uma Plataforma.")
+            if not vaga:
+                st.error("O campo 'Vaga' é obrigatório.")
+            elif not plataforma_sel:
+                st.error("Você precisa selecionar uma plataforma. Se a lista estiver vazia, cadastre uma na barra lateral à esquerda.")
             else:
                 nova_linha = pd.DataFrame([{
                     "Vaga": vaga, "Data": data_cand, "Empresa": empresa,
@@ -80,19 +89,21 @@ with st.expander("➕ Registrar Nova Candidatura", expanded=True):
                     "Recrutador": recrutador, "Contato Recrutador": contato, "Descricao": descricao
                 }])
                 st.session_state.meus_dados = pd.concat([st.session_state.meus_dados, nova_linha], ignore_index=True)
-                st.success("Salvo!")
+                st.success(f"Candidatura para '{vaga}' salva!")
                 st.rerun()
 
-# --- TABELA ---
-st.subheader("📊 Candidaturas Atuais")
+# --- VISUALIZAÇÃO DOS DADOS ---
+st.subheader("📊 Suas Candidaturas")
 
-# Mostra a tabela e permite editar o link da empresa e da vaga diretamente
-st.data_editor(
-    st.session_state.meus_dados,
-    column_config={
-        "Site Empresa": st.column_config.LinkColumn("Site Empresa"),
-        "Link Vaga": st.column_config.LinkColumn("Link Vaga"),
-    },
-    use_container_width=True,
-    num_rows="dynamic" # Permite deletar linhas selecionando-as e apertando Delete
-)
+if not st.session_state.meus_dados.empty:
+    st.data_editor(
+        st.session_state.meus_dados,
+        column_config={
+            "Site Empresa": st.column_config.LinkColumn("Site Empresa"),
+            "Link Vaga": st.column_config.LinkColumn("Link Vaga"),
+        },
+        use_container_width=True,
+        num_rows="dynamic"
+    )
+else:
+    st.info("Nenhuma vaga registrada. Use o formulário acima para começar.")
