@@ -9,6 +9,9 @@ st.set_page_config(page_title="My Job Tracker", layout="wide")
 # --- INJEÇÃO DE CSS PARA BARRA DE ROLAGEM VISÍVEL ---
 st.markdown("""
     <style>
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
     ::-webkit-scrollbar { width: 10px; height: 10px; }
     ::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 10px; }
     ::-webkit-scrollbar-thumb { background: #ccc; border-radius: 10px; border: 2px solid #f1f1f1; }
@@ -146,7 +149,7 @@ if not st.session_state.meus_dados.empty:
     )
 
     st.info("💡 Selecione uma vaga para ver os detalhes:")
-    vaga_idx = st.selectbox("Vaga selecionada:", 
+    vaga_idx = st.selectbox("Você selecionou:", 
                             options=range(len(st.session_state.meus_dados)),
                             format_func=lambda x: f"{st.session_state.meus_dados.iloc[x]['Vaga']} @ {st.session_state.meus_dados.iloc[x]['Empresa']}")
     
