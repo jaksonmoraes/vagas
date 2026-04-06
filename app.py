@@ -21,7 +21,7 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # --- CONEXÃO COM BANCO ---
-conn = st.connection("postgresql", type="sql")
+conn = st.connection("postgresql", type="sql", connect_args={"sslmode": "require"})
 
 # --- FUNÇÕES DE SEGURANÇA ---
 def hash_password(password):
