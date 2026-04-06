@@ -3,92 +3,144 @@ import pandas as pd
 from datetime import date
 import plotly.express as px
 
-# ... (Mantenha seu set_page_config, CSS da barra de rolagem e inicialização de sessão aqui) ...
+st.set_page_config(page_title="My Job Tracker", layout="wide")
 
-# --- FUNÇÃO DO MODAL (DIÁLOGO) ---
-@st.dialog("Descrição da Vaga")
-def mostrar_descricao(texto):
-    st.write(texto)
+# --- INJEÇÃO DE CSS PARA BARRA DE ROLAGEM VISÍVEL ---
+st.markdown("""
+    <style>
+    ::-webkit-scrollbar { width: 10px; height: 10px; }
+    ::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 10px; }
+    ::-webkit-scrollbar-thumb { background: #ccc; border-radius: 10px; border: 2px solid #f1f1f1; }
+    ::-webkit-scrollbar-thumb:hover { background: #888; }
+    * { scrollbar-width: thin; scrollbar-color: #ccc #f1f1f1; }
+    </style>
+    """, unsafe_allow_html=True)
+
+# --- INICIALIZAÇÃO DA SESSÃO ---
+if 'meus_dados' not in st.session_state:
+    st.session_state.meus_dados = pd.DataFrame(columns=[
+        "Vaga", "Data", "Plataforma", "Empresa", "Descricao", 
+        "Link Vaga", "Recrutador", "Contato Recrutador", "Site Empresa"
+    ])
+
+if 'plataformas' not in st.session_state:
+    st.session_state.plataformas = []
+
+# --- FUNÇÕES DE APOIO ---
+def adicionar_plataforma():
+    nova_p = st.session_state.temp_plataforma.strip()
+    if nova_p:
+        if nova_p not in st.session_state.plataformas:
+            st.session_state.plataformas.append(nova_p)
+            st.session_state.temp_plataforma = "" 
+        else:
+            st.warning(f"A plataforma '{nova_p}' já está cadastrada.")
+
+def remover_plataforma(nome):
+    st.session_state.plataformas.remove(nome)
+
+@st.dialog("Detalhes da Vaga")
+def mostrar_modal_descricao(titulo, texto):
+    st.subheader(titulo)
+    st.write(texto if texto else "Nenhuma descrição detalhada fornecida.")
     if st.button("Fechar"):
         st.rerun()
 
-# --- INTERFACE PRINCIPAL ---
-# ... (Mantenha seu formulário de cadastro aqui) ...
+# --- SIDEBAR (GESTÃO DE PLATAFORMAS) ---
+with st.sidebar:
+    st.header("⚙️ Configurações")
+    st.subheader("Cadastrar Plataformas")
+    st.text_input("Nova plataforma:", key="temp_plataforma", on_change=adicionar_plataforma)
+    
+    if st.session_state.plataformas:
+        for p in st.session_state.plataformas:
+            cols = st.columns([4, 1])
+            cols[0].write(f"• {p}")
+            if cols[1].button("−", key=f"del_{p}"):
+                remover_plataforma(p)
+                st.rerun()
+    
+    st.divider()
+    csv = st.session_state.meus_dados.to_csv(index=False).encode('utf-8')
+    st.download_button("💾 Baixar Dados (CSV)", data=csv, file_name='minhas_vagas.csv', mime='text/csv')
 
-# --- VISUALIZAÇÃO DOS DADOS REORDENADOS ---
+# --- FORMULÁRIO DE CADASTRO (PRESERVADO) ---
+st.title("💼 Tracker de Candidaturas")
+
+with st.expander("➕ Registrar Nova Candidatura", expanded=True):
+    with st.form("form_vaga", clear_on_submit=True):
+        c1, c2 = st.columns(2)
+        with c1:
+            vaga = st.text_input("Vaga (Nome e Cargo)*")
+            empresa = st.text_input("Empresa")
+            site_empresa = st.text_input("Site da Empresa (URL)")
+        with c2:
+            data_cand = st.date_input("Data da Candidatura", date.today())
+            plataforma_sel = st.selectbox("Selecionar Plataforma*", options=[""] + st.session_state.plataformas)
+            salario = st.number_input("Salário (R$)", min_value=0.0, step=100.0)
+
+        link_vaga = st.text_input("Link da Vaga")
+        recrutador = st.text_input("Nome do Recrutador")
+        contato = st.text_input("Contato (Email/Tel)")
+        descricao = st.text_area("Descrição da Vaga", max_chars=1500)
+        
+        submitted = st.form_submit_button("Salvar Candidatura")
+        
+        if submitted:
+            if not vaga or not plataforma_sel:
+                st.error("Campos Vaga e Plataforma são obrigatórios.")
+            else:
+                nova_linha = pd.DataFrame([{
+                    "Vaga": vaga, "Data": data_cand, "Plataforma": plataforma_sel,
+                    "Empresa": empresa, "Descricao": descricao, "Link Vaga": link_vaga,
+                    "Recrutador": recrutador, "Contato Recrutador": contato, "Site Empresa": site_empresa
+                }])
+                st.session_state.meus_dados = pd.concat([st.session_state.meus_dados, nova_linha], ignore_index=True)
+                st.success(f"Candidatura para '{vaga}' salva!")
+                st.rerun()
+
+# --- VISUALIZAÇÃO DOS DADOS (REORDENADO) ---
 st.subheader("📊 Suas Candidaturas")
 
 if not st.session_state.meus_dados.empty:
-    # 1. REORDENAÇÃO DAS COLUNAS
-    ordem_colunas = [
-        "Vaga", "Data", "Plataforma", "Empresa", "Descricao", 
-        "Link Vaga", "Recrutador", "Contato Recrutador", "Site Empresa"
-    ]
+    # A ordem das colunas abaixo segue exatamente o que você solicitou
+    ordem_colunas = ["Vaga", "Data", "Plataforma", "Empresa", "Descricao", "Link Vaga", "Recrutador", "Contato Recrutador", "Site Empresa"]
     
-    # Garantir que o DF siga a ordem para exibição
-    df_ordenado = st.session_state.meus_dados[ordem_colunas]
-
-    # 2. TABELA EDITÁVEL
     st.data_editor(
-        df_ordenado,
+        st.session_state.meus_dados[ordem_colunas],
         column_config={
-            "Vaga": st.column_config.TextColumn("Vaga", width="medium"),
             "Data": st.column_config.DateColumn("Data", format="DD/MM/YYYY"),
-            "Plataforma": "Plataforma",
-            "Empresa": "Empresa",
-            "Descricao": st.column_config.TextColumn("Descrição (Visualização resumida)", width="small"),
-            "Link Vaga": st.column_config.LinkColumn("Link da Vaga"),
-            "Recrutador": "Recrutador",
-            "Contato Recrutador": "Contato",
-            "Site Empresa": st.column_config.LinkColumn("Site da Empresa"),
+            "Link Vaga": st.column_config.LinkColumn("Link Vaga"),
+            "Site Empresa": st.column_config.LinkColumn("Site Empresa"),
+            "Descricao": st.column_config.TextColumn("Descrição (Prévia)", width="small")
         },
         use_container_width=True,
         num_rows="dynamic",
         key="editor_vagas"
     )
 
-    # 3. MODAL DE FOCO (Workaround para focar na descrição)
-    st.write("---")
-    st.info("💡 Para ler a descrição completa em foco, selecione a vaga abaixo:")
+    # Botão para abrir o Modal de Foco
+    st.info("💡 Selecione uma vaga para visualizar a descrição completa em foco:")
+    vaga_idx = st.selectbox("Vaga selecionada:", 
+                            options=range(len(st.session_state.meus_dados)),
+                            format_func=lambda x: f"{st.session_state.meus_dados.iloc[x]['Vaga']} @ {st.session_state.meus_dados.iloc[x]['Empresa']}")
     
-    # Criamos um seletor para abrir o modal de forma limpa
-    vaga_para_ver = st.selectbox(
-        "Visualizar detalhes de:", 
-        options=range(len(st.session_state.meus_dados)),
-        format_func=lambda x: f"{st.session_state.meus_dados.iloc[x]['Vaga']} - {st.session_state.meus_dados.iloc[x]['Empresa']}"
-    )
-    
-    if st.button("🔍 Abrir Detalhes em Foco"):
-        texto_completo = st.session_state.meus_dados.iloc[vaga_para_ver]['Descricao']
-        mostrar_descricao(texto_completo if texto_completo else "Nenhuma descrição cadastrada.")
+    if st.button("🔍 Ver Descrição em Foco"):
+        vaga_info = st.session_state.meus_dados.iloc[vaga_idx]
+        mostrar_modal_descricao(vaga_info['Vaga'], vaga_info['Descricao'])
 
-# --- GRÁFICOS (Mantenha seu código de gráficos aqui) ---
-
-
-# ... (seu código anterior da tabela)
-
-# --- SEÇÃO DE ANÁLISE DE DADOS ---
+# --- ANÁLISE DE DADOS (GRÁFICOS) ---
 if not st.session_state.meus_dados.empty:
     st.divider()
-    st.subheader("📈 Análise de Candidaturas")
+    st.subheader("📈 Estatísticas")
+    col_g1, col_g2 = st.columns(2)
     
-    col_chart1, col_chart2 = st.columns(2)
-    
-    with col_chart1:
-        # Gráfico de Pizza: Vagas por Plataforma
-        df_contagem = st.session_state.meus_dados['Plataforma'].value_counts().reset_index()
-        df_contagem.columns = ['Plataforma', 'Total']
+    with col_g1:
+        df_p = st.session_state.meus_dados['Plataforma'].value_counts().reset_index()
+        fig1 = px.pie(df_p, values='count', names='Plataforma', title='Vagas por Plataforma', hole=0.4)
+        st.plotly_chart(fig1, use_container_width=True)
         
-        fig = px.pie(df_contagem, values='Total', names='Plataforma', 
-                     title='Distribuição por Plataforma',
-                     hole=0.3, # Gráfico de rosca fica mais moderno
-                     color_discrete_sequence=px.colors.qualitative.Pastel)
-        st.plotly_chart(fig, use_container_width=True)
-
-    with col_chart2:
-        # Gráfico de Barras: Vagas ao longo do tempo
-        df_tempo = st.session_state.meus_dados.groupby('Data').size().reset_index(name='Quantidade')
-        fig2 = px.bar(df_tempo, x='Data', y='Quantidade', 
-                      title='Candidaturas por Dia',
-                      color_discrete_sequence=['#FF4B4B'])
+    with col_g2:
+        df_t = st.session_state.meus_dados.groupby('Data').size().reset_index(name='Qtd')
+        fig2 = px.bar(df_t, x='Data', y='Qtd', title='Candidaturas por Período')
         st.plotly_chart(fig2, use_container_width=True)
