@@ -150,7 +150,7 @@ if not st.session_state.meus_dados.empty:
                             options=range(len(st.session_state.meus_dados)),
                             format_func=lambda x: f"{st.session_state.meus_dados.iloc[x]['Vaga']} @ {st.session_state.meus_dados.iloc[x]['Empresa']}")
     
-    if st.button("🔍 Ver Descrição em Foco"):
+    if st.button("🔍 Ver Descrição completa da vaga"):
         vaga_info = st.session_state.meus_dados.iloc[vaga_idx]
         mostrar_modal_descricao(vaga_info['Vaga'], vaga_info['Descricao'])
 
