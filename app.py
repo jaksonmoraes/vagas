@@ -1,11 +1,14 @@
 import streamlit as st
 import pandas as pd
 from datetime import date
+from turtle import st
+
+
 import plotly.express as px
 
 st.set_page_config(page_title="My Job Tracker", layout="wide")
 
-# --- INJEÇÃO DE CSS PARA BARRA DE ROLAGEM VISÍVEL ---
+# --- INJEÇÃO DE CSS PARA BARRA DE ROLAGEM ---
 st.markdown("""
     <style>
     ::-webkit-scrollbar { width: 10px; height: 10px; }
@@ -29,12 +32,9 @@ if 'plataformas' not in st.session_state:
 # --- FUNÇÕES DE APOIO ---
 def adicionar_plataforma():
     nova_p = st.session_state.temp_plataforma.strip()
-    if nova_p:
-        if nova_p not in st.session_state.plataformas:
-            st.session_state.plataformas.append(nova_p)
-            st.session_state.temp_plataforma = "" 
-        else:
-            st.warning(f"A plataforma '{nova_p}' já está cadastrada.")
+    if nova_p and nova_p not in st.session_state.plataformas:
+        st.session_state.plataformas.append(nova_p)
+        st.session_state.temp_plataforma = ""
 
 def remover_plataforma(nome):
     st.session_state.plataformas.remove(nome)
@@ -42,16 +42,41 @@ def remover_plataforma(nome):
 @st.dialog("Detalhes da Vaga")
 def mostrar_modal_descricao(titulo, texto):
     st.subheader(titulo)
-    st.write(texto if texto else "Nenhuma descrição detalhada fornecida.")
+    st.write(texto if texto else "Sem descrição.")
     if st.button("Fechar"):
         st.rerun()
 
-# --- SIDEBAR (GESTÃO DE PLATAFORMAS) ---
+# --- SIDEBAR (IMPORTAR/EXPORTAR E PLATAFORMAS) ---
 with st.sidebar:
-    st.header("⚙️ Configurações")
+    st.header("⚙️ Gestão de Dados")
+    
+    # NOVO: Seção de Importação
+    st.subheader("📥 Importar Dados")
+    arquivo_upload = st.file_uploader("Suba seu arquivo vagas.csv", type="csv")
+    
+    if arquivo_upload is not None:
+        try:
+            df_importado = pd.read_csv(arquivo_upload)
+            # Verifica se as colunas batem para evitar erros
+            colunas_necessarias = ["Vaga", "Data", "Plataforma", "Empresa"]
+            if all(col in df_importado.columns for col in colunas_necessarias):
+                st.session_state.meus_dados = df_importado
+                # Atualiza a lista de plataformas baseada no arquivo importado
+                plataformas_do_arquivo = df_importado['Plataforma'].unique().tolist()
+                for p in plataformas_do_arquivo:
+                    if p not in st.session_state.plataformas:
+                        st.session_state.plataformas.append(p)
+                st.success("Dados carregados com sucesso!")
+            else:
+                st.error("O arquivo não parece ter o formato correto.")
+        except Exception as e:
+            st.error(f"Erro ao ler arquivo: {e}")
+
+    st.divider()
+
+    # Gestão de Plataformas
     st.subheader("Cadastrar Plataformas")
     st.text_input("Nova plataforma:", key="temp_plataforma", on_change=adicionar_plataforma)
-    
     if st.session_state.plataformas:
         for p in st.session_state.plataformas:
             cols = st.columns([4, 1])
@@ -61,8 +86,11 @@ with st.sidebar:
                 st.rerun()
     
     st.divider()
+    
+    # Exportação
+    st.subheader("📤 Exportar Dados")
     csv = st.session_state.meus_dados.to_csv(index=False).encode('utf-8')
-    st.download_button("💾 Baixar Dados (CSV)", data=csv, file_name='minhas_vagas.csv', mime='text/csv')
+    st.download_button("💾 Baixar CSV Atualizado", data=csv, file_name='vagas.csv', mime='text/csv')
 
 # --- FORMULÁRIO DE CADASTRO (PRESERVADO) ---
 st.title("💼 Tracker de Candidaturas")
