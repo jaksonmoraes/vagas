@@ -1,175 +1,190 @@
 import streamlit as st
 import pandas as pd
+import bcrypt
+import smtplib
+from email.mime.text import MIMEText
 from datetime import date
 import plotly.express as px
+from sqlalchemy import text
 
-# Configuração da página
-st.set_page_config(page_title="Histórico de Vagas", layout="wide")
+# --- CONFIGURAÇÃO E ESTILO ---
+st.set_page_config(page_title="Job Tracker Cloud", layout="wide")
 
-# --- INJEÇÃO DE CSS PARA BARRA DE ROLAGEM VISÍVEL ---
 st.markdown("""
     <style>
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
     ::-webkit-scrollbar { width: 10px; height: 10px; }
     ::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 10px; }
     ::-webkit-scrollbar-thumb { background: #ccc; border-radius: 10px; border: 2px solid #f1f1f1; }
     ::-webkit-scrollbar-thumb:hover { background: #888; }
-    * { scrollbar-width: thin; scrollbar-color: #ccc #f1f1f1; }
+    #MainMenu {visibility: hidden;} footer {visibility: hidden;}
     </style>
     """, unsafe_allow_html=True)
 
-# --- INICIALIZAÇÃO DA SESSÃO ---
-if 'meus_dados' not in st.session_state:
-    st.session_state.meus_dados = pd.DataFrame(columns=[
-        "Vaga", "Data", "Plataforma", "Empresa", "Descricao", 
-        "Link Vaga", "Recrutador", "Contato Recrutador", "Site Empresa"
-    ])
+# --- CONEXÃO COM BANCO ---
+conn = st.connection("postgresql", type="sql")
 
-if 'plataformas' not in st.session_state:
-    st.session_state.plataformas = []
+# --- FUNÇÕES DE SEGURANÇA ---
+def hash_password(password):
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
-# --- FUNÇÕES DE APOIO ---
-def adicionar_plataforma():
-    nova_p = st.session_state.temp_plataforma.strip()
-    if nova_p and nova_p not in st.session_state.plataformas:
-        st.session_state.plataformas.append(nova_p)
-        st.session_state.temp_plataforma = ""
+def check_password(password, hashed):
+    return bcrypt.checkpw(password.encode(), hashed.encode())
 
-def remover_plataforma(nome):
-    st.session_state.plataformas.remove(nome)
+def send_recovery_email(to_email):
+    msg = MIMEText(f"Olá! Você solicitou a recuperação de acesso ao Job Tracker.\nPara resetar sua senha, entre em contato com o administrador ou use o código temporário: RECOVERY2026")
+    msg['Subject'] = 'Recuperação de Acesso - Job Tracker'
+    msg['From'] = st.secrets["email_auth"]["smtp_user"]
+    msg['To'] = to_email
+    try:
+        with smtplib.SMTP(st.secrets["email_auth"]["smtp_server"], st.secrets["email_auth"]["smtp_port"]) as server:
+            server.starttls()
+            server.login(st.secrets["email_auth"]["smtp_user"], st.secrets["email_auth"]["smtp_pass"])
+            server.send_message(msg)
+        return True
+    except Exception as e:
+        return False
 
-@st.dialog("Detalhes da Vaga")
-def mostrar_modal_descricao(titulo, texto):
-    st.subheader(titulo)
-    st.write(texto if texto else "Nenhuma descrição detalhada fornecida.")
-    if st.button("Fechar"):
-        st.rerun()
+# --- CONTROLE DE SESSÃO ---
+if 'user_id' not in st.session_state:
+    st.session_state.user_id = None
+if 'user_email' not in st.session_state:
+    st.session_state.user_email = None
 
-# --- SIDEBAR (IMPORTAR/EXPORTAR E PLATAFORMAS) ---
-with st.sidebar:
-    st.header("⚙️ Gestão de Dados")
+# --- TELAS DE AUTENTICAÇÃO ---
+def tela_acesso():
+    st.title("💼 Job Tracker Cloud")
+    col1, col2 = st.columns([1, 1])
     
-    st.subheader("📥 Importar Dados")
-    arquivo_upload = st.file_uploader("Suba seu arquivo vagas.csv", type="csv")
-    
-    if arquivo_upload is not None:
-        try:
-            df_importado = pd.read_csv(arquivo_upload)
-            # CONVERSÃO CRUCIAL: Transforma a coluna Data de texto para formato datetime
-            if "Data" in df_importado.columns:
-                df_importado["Data"] = pd.to_datetime(df_importado["Data"]).dt.date
+    with col1:
+        aba_login, aba_cadastro, aba_recuperar = st.tabs(["Login", "Criar Conta", "Recuperar"])
+        
+        with aba_login:
+            with st.form("login_form"):
+                email = st.text_input("Email")
+                senha = st.text_input("Senha", type="password")
+                if st.form_submit_button("Entrar"):
+                    res = conn.query(f"SELECT id, senha_hash FROM usuarios WHERE email = '{email}'", ttl=0)
+                    if not res.empty and check_password(senha, res.iloc[0]['senha_hash']):
+                        st.session_state.user_id = res.iloc[0]['id']
+                        st.session_state.user_email = email
+                        st.rerun()
+                    else:
+                        st.error("Usuário ou senha incorretos.")
+
+        with aba_cadastro:
+            with st.form("cadastro_form"):
+                n_email = st.text_input("Novo Email")
+                n_senha = st.text_input("Senha (mín. 8 caracteres)", type="password")
+                if st.form_submit_button("Cadastrar"):
+                    if len(n_senha) < 8:
+                        st.warning("A senha deve ter pelo menos 8 caracteres.")
+                    else:
+                        senha_h = hash_password(n_senha)
+                        try:
+                            with conn.session as s:
+                                s.execute(text("INSERT INTO usuarios (email, senha_hash) VALUES (:e, :s)"), {"e": n_email, "s": senha_h})
+                                s.commit()
+                            st.success("Conta criada com sucesso! Faça login.")
+                        except:
+                            st.error("Este email já está em uso.")
+
+        with aba_recuperar:
+            email_rec = st.text_input("Email cadastrado")
+            if st.button("Enviar e-mail de ajuda"):
+                if send_recovery_email(email_rec):
+                    st.success("Instruções enviadas para seu e-mail!")
+                else:
+                    st.error("Falha ao enviar e-mail. Verifique os Secrets.")
+
+# --- DASHBOARD PRINCIPAL (LOGADO) ---
+if st.session_state.user_id is None:
+    tela_acesso()
+else:
+    # Sidebar: Gestão de Plataformas no Banco
+    with st.sidebar:
+        st.header(f"👤 {st.session_state.user_email}")
+        if st.button("Sair"):
+            st.session_state.user_id = None
+            st.rerun()
+        
+        st.divider()
+        st.subheader("Minhas Plataformas")
+        nova_p = st.text_input("Adicionar Plataforma")
+        if st.button("Adicionar"):
+            if nova_p:
+                try:
+                    with conn.session as s:
+                        s.execute(text("INSERT INTO plataformas_usuario (user_id, nome_plataforma) VALUES (:uid, :nome)"), 
+                                 {"uid": st.session_state.user_id, "nome": nova_p})
+                        s.commit()
+                    st.rerun()
+                except:
+                    st.warning("Plataforma já cadastrada.")
+        
+        # Lista plataformas do usuário
+        plats_df = conn.query(f"SELECT nome_plataforma FROM plataformas_usuario WHERE user_id = '{st.session_state.user_id}'", ttl=0)
+        lista_plats = plats_df['nome_plataforma'].tolist()
+        for p in lista_plats:
+            c_p1, c_p2 = st.columns([4, 1])
+            c_p1.write(f"• {p}")
+            if c_p2.button("🗑️", key=f"del_{p}"):
+                with conn.session as s:
+                    s.execute(text("DELETE FROM plataformas_usuario WHERE user_id = :uid AND nome_plataforma = :nome"), 
+                             {"uid": st.session_state.user_id, "nome": p})
+                    s.commit()
+                st.rerun()
+
+    # Formulário de Cadastro de Vaga
+    with st.expander("➕ Nova Candidatura", expanded=False):
+        with st.form("add_vaga"):
+            col_v1, col_v2 = st.columns(2)
+            with col_v1:
+                f_vaga = st.text_input("Vaga*")
+                f_empresa = st.text_input("Empresa")
+                f_site = st.text_input("Site Empresa")
+            with col_v2:
+                f_data = st.date_input("Data", date.today())
+                f_plat = st.selectbox("Plataforma*", [""] + lista_plats)
+                f_salario = st.number_input("Salário", min_value=0.0)
             
-            colunas_necessarias = ["Vaga", "Data", "Plataforma", "Empresa"]
-            if all(col in df_importado.columns for col in colunas_necessarias):
-                st.session_state.meus_dados = df_importado
-                plataformas_arquivo = df_importado['Plataforma'].unique().tolist()
-                for p in plataformas_arquivo:
-                    if p not in st.session_state.plataformas:
-                        st.session_state.plataformas.append(p)
-                st.success("Dados carregados!")
-            else:
-                st.error("O arquivo não possui as colunas necessárias.")
-        except Exception as e:
-            st.error(f"Erro ao processar arquivo: {e}")
+            f_link = st.text_input("Link da Vaga")
+            f_recru = st.text_input("Recrutador")
+            f_contato = st.text_input("Contato")
+            f_desc = st.text_area("Descrição", max_chars=1500)
+            
+            if st.form_submit_button("Salvar no Banco"):
+                if f_vaga and f_plat:
+                    with conn.session as s:
+                        query_ins = text("""INSERT INTO candidaturas 
+                            (user_id, vaga, data_cand, plataforma, empresa, descricao, link_vaga, recrutador, contato_recrutador, site_empresa, salario) 
+                            VALUES (:uid, :v, :d, :p, :e, :desc, :l, :r, :c, :s_e, :sal)""")
+                        s.execute(query_ins, {"uid": st.session_state.user_id, "v": f_vaga, "d": f_data, "p": f_plat, "e": f_empresa, 
+                                             "desc": f_desc, "l": f_link, "r": f_recru, "c": f_contato, "s_e": f_site, "sal": f_salario})
+                        s.commit()
+                    st.success("Vaga salva com sucesso!")
+                    st.rerun()
+                else:
+                    st.error("Vaga e Plataforma são obrigatórios.")
 
-    st.divider()
-    st.subheader("Cadastrar Plataformas")
-    st.text_input("Nova plataforma:", key="temp_plataforma", on_change=adicionar_plataforma)
-    if st.session_state.plataformas:
-        for p in st.session_state.plataformas:
-            cols = st.columns([4, 1])
-            cols[0].write(f"• {p}")
-            if cols[1].button("−", key=f"del_{p}"):
-                remover_plataforma(p)
-                st.rerun()
+    # Tabela de Dados (Filtrada por Usuário)
+    st.subheader("📊 Minhas Aplicações")
+    df_vagas = conn.query(f"SELECT * FROM candidaturas WHERE user_id = '{st.session_state.user_id}' ORDER BY data_cand DESC", ttl=0)
     
-    st.divider()
-    st.subheader("📤 Exportar Dados")
-    csv_data = st.session_state.meus_dados.to_csv(index=False).encode('utf-8')
-    st.download_button("💾 Baixar CSV Atualizado", data=csv_data, file_name='vagas.csv', mime='text/csv')
-
-# --- FORMULÁRIO DE CADASTRO ---
-st.title("💼 Tracker de Candidaturas")
-
-with st.expander("➕ Registrar Nova Candidatura", expanded=True):
-    with st.form("form_vaga", clear_on_submit=True):
-        c1, c2 = st.columns(2)
-        with c1:
-            vaga = st.text_input("Vaga (Nome e Cargo)*")
-            empresa = st.text_input("Empresa")
-            site_empresa = st.text_input("Site da Empresa (URL)")
-        with c2:
-            data_cand = st.date_input("Data da Candidatura", date.today())
-            plataforma_sel = st.selectbox("Selecionar Plataforma*", options=[""] + st.session_state.plataformas)
-            salario = st.number_input("Salário (R$)", min_value=0.0, step=100.0)
-
-        link_vaga = st.text_input("Link da Vaga")
-        recrutador = st.text_input("Nome do Recrutador")
-        contato = st.text_input("Contato (Email/Tel)")
-        descricao = st.text_area("Descrição da Vaga", max_chars=1500)
+    if not df_vagas.empty:
+        # Reordenação para exibição
+        cols_order = ["vaga", "data_cand", "plataforma", "empresa", "descricao", "link_vaga", "recrutador", "contato_recrutador", "site_empresa"]
+        st.data_editor(df_vagas[cols_order], use_container_width=True)
         
-        submitted = st.form_submit_button("Salvar Candidatura")
-        
-        if submitted:
-            if not vaga or not plataforma_sel:
-                st.error("Campos Vaga e Plataforma são obrigatórios.")
-            else:
-                nova_linha = pd.DataFrame([{
-                    "Vaga": vaga, "Data": data_cand, "Plataforma": plataforma_sel,
-                    "Empresa": empresa, "Descricao": descricao, "Link Vaga": link_vaga,
-                    "Recrutador": recrutador, "Contato Recrutador": contato, "Site Empresa": site_empresa
-                }])
-                st.session_state.meus_dados = pd.concat([st.session_state.meus_dados, nova_linha], ignore_index=True)
-                st.success(f"Candidatura salva!")
-                st.rerun()
-
-# --- VISUALIZAÇÃO DOS DADOS ---
-st.subheader("📊 Suas Candidaturas")
-
-if not st.session_state.meus_dados.empty:
-    ordem_colunas = ["Vaga", "Data", "Plataforma", "Empresa", "Descricao", "Link Vaga", "Recrutador", "Contato Recrutador", "Site Empresa"]
-    
-    # IMPORTANTE: Garantimos que a coluna Data esteja no formato correto antes do editor
-    df_exibicao = st.session_state.meus_dados[ordem_colunas].copy()
-    df_exibicao["Data"] = pd.to_datetime(df_exibicao["Data"]).dt.date
-
-    st.data_editor(
-        df_exibicao,
-        column_config={
-            "Data": st.column_config.DateColumn("Data", format="DD/MM/YYYY"),
-            "Link Vaga": st.column_config.LinkColumn("Link da Vaga"),
-            "Site Empresa": st.column_config.LinkColumn("Site da Empresa"),
-            "Descricao": st.column_config.TextColumn("Descrição (Prévia)", width="small")
-        },
-        use_container_width=True,
-        num_rows="dynamic",
-        key="editor_vagas"
-    )
-
-    st.info("💡 Selecione uma vaga para ver os detalhes:")
-    vaga_idx = st.selectbox("Você selecionou:", 
-                            options=range(len(st.session_state.meus_dados)),
-                            format_func=lambda x: f"{st.session_state.meus_dados.iloc[x]['Vaga']} @ {st.session_state.meus_dados.iloc[x]['Empresa']}")
-    
-    if st.button("🔍 Ver Descrição completa da vaga"):
-        vaga_info = st.session_state.meus_dados.iloc[vaga_idx]
-        mostrar_modal_descricao(vaga_info['Vaga'], vaga_info['Descricao'])
-
-# --- ANÁLISE DE DADOS (GRÁFICOS) ---
-if not st.session_state.meus_dados.empty:
-    st.divider()
-    st.subheader("📈 Estatísticas de vagas aplicadas")
-    col_g1, col_g2 = st.columns(2)
-    
-    with col_g1:
-        df_p = st.session_state.meus_dados['Plataforma'].value_counts().reset_index()
-        df_p.columns = ['Plataforma', 'Total']
-        fig1 = px.pie(df_p, values='Total', names='Plataforma', title='Vagas por Plataforma', hole=0.4)
-        st.plotly_chart(fig1, use_container_width=True)
-        
-    with col_g2:
-        df_t = st.session_state.meus_dados.groupby('Data').size().reset_index(name='Qtd')
-        fig2 = px.bar(df_t, x='Data', y='Qtd', title='Candidaturas por Período')
-        st.plotly_chart(fig2, use_container_width=True)
+        # Gráficos
+        st.divider()
+        g1, g2 = st.columns(2)
+        with g1:
+            fig_p = px.pie(df_vagas, names='plataforma', title='Por Plataforma', hole=0.4)
+            st.plotly_chart(fig_p, use_container_width=True)
+        with g2:
+            df_vagas['data_cand'] = pd.to_datetime(df_vagas['data_cand'])
+            df_timeline = df_vagas.groupby('data_cand').size().reset_index(name='qtd')
+            fig_t = px.bar(df_timeline, x='data_cand', y='qtd', title='Candidaturas por Dia')
+            st.plotly_chart(fig_t, use_container_width=True)
+    else:
+        st.info("Nenhuma candidatura encontrada. Comece cadastrando uma acima!")
