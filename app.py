@@ -157,7 +157,7 @@ if not st.session_state.meus_dados.empty:
 # --- ANÁLISE DE DADOS (GRÁFICOS) ---
 if not st.session_state.meus_dados.empty:
     st.divider()
-    st.subheader("📈 Estatísticas")
+    st.subheader("📈 Estatísticas de vagas aplicadas")
     col_g1, col_g2 = st.columns(2)
     
     with col_g1:
