@@ -4,7 +4,7 @@ from datetime import date
 import plotly.express as px
 
 # Configuração da página
-st.set_page_config(page_title="My Job Tracker", layout="wide")
+st.set_page_config(page_title="Histórico de Vagas", layout="wide")
 
 # --- INJEÇÃO DE CSS PARA BARRA DE ROLAGEM VISÍVEL ---
 st.markdown("""
