@@ -4,6 +4,38 @@ from datetime import date
 
 st.set_page_config(page_title="My Job Tracker", layout="wide")
 
+# --- INJEÇÃO DE CSS PARA BARRA DE ROLAGEM VISÍVEL ---
+st.markdown("""
+    <style>
+    /* Estiliza a barra de rolagem globalmente para navegadores baseados em Webkit (Chrome, Edge, Safari) */
+    ::-webkit-scrollbar {
+        width: 10px;
+        height: 10px; /* Altura da barra horizontal */
+    }
+
+    ::-webkit-scrollbar-track {
+        background: #f1f1f1; /* Cor do fundo da trilha */
+        border-radius: 10px;
+    }
+
+    ::-webkit-scrollbar-thumb {
+        background: #ccc; /* Cor da barra em si (cinza claro/branco) */
+        border-radius: 10px;
+        border: 2px solid #f1f1f1; /* Cria um espaçamento para parecer mais limpo */
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+        background: #888; /* Cor quando passa o mouse */
+    }
+
+    /* Força a visibilidade em navegadores Firefox */
+    * {
+        scrollbar-width: thin;
+        scrollbar-color: #ccc #f1f1f1;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
 # --- INICIALIZAÇÃO DA SESSÃO ---
 if 'meus_dados' not in st.session_state:
     st.session_state.meus_dados = pd.DataFrame(columns=[
