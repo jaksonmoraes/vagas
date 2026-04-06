@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 from datetime import date
+import plotly.express as px
 
 st.set_page_config(page_title="My Job Tracker", layout="wide")
 
@@ -139,3 +140,32 @@ if not st.session_state.meus_dados.empty:
     )
 else:
     st.info("Nenhuma vaga registrada. Use o formulário acima para começar.")
+
+
+# ... (seu código anterior da tabela)
+
+# --- SEÇÃO DE ANÁLISE DE DADOS ---
+if not st.session_state.meus_dados.empty:
+    st.divider()
+    st.subheader("📈 Análise de Candidaturas")
+    
+    col_chart1, col_chart2 = st.columns(2)
+    
+    with col_chart1:
+        # Gráfico de Pizza: Vagas por Plataforma
+        df_contagem = st.session_state.meus_dados['Plataforma'].value_counts().reset_index()
+        df_contagem.columns = ['Plataforma', 'Total']
+        
+        fig = px.pie(df_contagem, values='Total', names='Plataforma', 
+                     title='Distribuição por Plataforma',
+                     hole=0.3, # Gráfico de rosca fica mais moderno
+                     color_discrete_sequence=px.colors.qualitative.Pastel)
+        st.plotly_chart(fig, use_container_width=True)
+
+    with col_chart2:
+        # Gráfico de Barras: Vagas ao longo do tempo
+        df_tempo = st.session_state.meus_dados.groupby('Data').size().reset_index(name='Quantidade')
+        fig2 = px.bar(df_tempo, x='Data', y='Quantidade', 
+                      title='Candidaturas por Dia',
+                      color_discrete_sequence=['#FF4B4B'])
+        st.plotly_chart(fig2, use_container_width=True)
