@@ -132,7 +132,8 @@ else:
 
     # Formulário de Cadastro de Vaga
     with st.expander("➕ Nova Candidatura", expanded=False):
-        with st.form("add_vaga"):
+        # Usamos o clear_on_submit=True para ajudar na limpeza visual
+        with st.form("add_vaga", clear_on_submit=True):
             col_v1, col_v2 = st.columns(2)
             with col_v1:
                 f_vaga = st.text_input("Vaga*")
@@ -140,7 +141,8 @@ else:
                 f_site = st.text_input("Site Empresa")
             with col_v2:
                 f_data = st.date_input("Data", date.today())
-                f_plat = st.selectbox("Plataforma*", [""] + lista_plats)
+                # Garantimos que a lista de plataformas não quebre se estiver vazia
+                f_plat = st.selectbox("Plataforma*", [""] + (lista_plats if 'lista_plats' in locals() else []))
                 f_salario = st.number_input("Salário", min_value=0.0)
             
             f_link = st.text_input("Link da Vaga")
@@ -150,17 +152,27 @@ else:
             
             if st.form_submit_button("Salvar no Banco"):
                 if f_vaga and f_plat:
-                    with conn.session as s:
-                        query_ins = text("""INSERT INTO candidaturas 
-                            (user_id, vaga, data_cand, plataforma, empresa, descricao, link_vaga, recrutador, contato_recrutador, site_empresa, salario) 
-                            VALUES (:uid, :v, :d, :p, :e, :desc, :l, :r, :c, :s_e, :sal)""")
-                        s.execute(query_ins, {"uid": st.session_state.user_id, "v": f_vaga, "d": f_data, "p": f_plat, "e": f_empresa, 
-                                             "desc": f_desc, "l": f_link, "r": f_recru, "c": f_contato, "s_e": f_site, "sal": f_salario})
-                        s.commit()
-                    st.success("Vaga salva com sucesso!")
-                    st.rerun()
+                    try:
+                        with conn.session as s:
+                            query_ins = text("""INSERT INTO candidaturas 
+                                (user_id, vaga, data_cand, plataforma, empresa, descricao, link_vaga, recrutador, contato_recrutador, site_empresa, salario) 
+                                VALUES (:uid, :v, :d, :p, :e, :desc, :l, :r, :c, :s_e, :sal)""")
+                            s.execute(query_ins, {
+                                "uid": st.session_state.user_id, "v": f_vaga, "d": f_data, "p": f_plat, "e": f_empresa, 
+                                "desc": f_desc, "l": f_link, "r": f_recru, "c": f_contato, "s_e": f_site, "sal": f_salario
+                            })
+                            s.commit()
+                        
+                        st.success("Vaga salva com sucesso!")
+                        # O PULO DO GATO: Aguarda um breve momento e reinicia a página
+                        import time
+                        time.sleep(1)
+                        st.rerun() 
+                        
+                    except Exception as e:
+                        st.error(f"Erro ao salvar: {e}")
                 else:
-                    st.error("Vaga e Plataforma são obrigatórios.")
+                    st.error("Vaga e Plataforma são campos obrigatórios.")
 
     # Tabela de Dados (Filtrada por Usuário)
     st.subheader("📊 Minhas Aplicações")
