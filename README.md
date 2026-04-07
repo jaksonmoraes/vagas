@@ -1,6 +1,6 @@
 # 💼 Minhas Vagas
 
-O **Job Tracker Cloud** é um dashboard interativo desenvolvido em Python com Streamlit para o gerenciamento centralizado de candidaturas a vagas de emprego. O sistema permite cadastrar, visualizar e analisar o histórico de aplicações, agora utilizando persistência em banco de dados relacional e recursos avançados de segurança.
+O **Minhas Vagas** é um dashboard interativo desenvolvido em Python com Streamlit para o gerenciamento centralizado de candidaturas a vagas de emprego. O sistema permite cadastrar, visualizar e analisar o histórico de aplicações, agora utilizando persistência em banco de dados relacional e recursos avançados de segurança.
 
 ## 🚀 Novidades desta Versão
 - **Banco de Dados Relacional:** Migração de CSV para PostgreSQL (via SQLAlchemy) para maior integridade e escalabilidade dos dados.
