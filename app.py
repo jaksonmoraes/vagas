@@ -18,7 +18,6 @@ st.markdown("""
     ::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 10px; }
     ::-webkit-scrollbar-thumb { background: #ccc; border-radius: 10px; border: 2px solid #f1f1f1; }
     ::-webkit-scrollbar-thumb:hover { background: #888; }
-    .subtitle-text { color: #666; font-size: 0.9rem; margin-top: -5px; margin-bottom: 15px; }
     #MainMenu {visibility: hidden;} footer {visibility: hidden;}
     </style>
     """, unsafe_allow_html=True)
@@ -26,12 +25,26 @@ st.markdown("""
 # --- CONEXÃO COM BANCO ---
 conn = st.connection("postgresql", type="sql", connect_args={"sslmode": "require"})
 
-# --- FUNÇÕES DE SEGURANÇA ---
+# --- FUNÇÕES DE SEGURANÇA E VALIDAÇÃO ---
 def hash_password(password):
     return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
 def check_password(password, hashed):
     return bcrypt.checkpw(password.encode(), hashed.encode())
+
+def validar_email(email):
+    # Passos 1 e 2: Regex para formato e bloqueio de e-mails descartáveis (Step 3)
+    padrao = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    dominios_bloqueados = ["10minutemail.com", "tempmail.com", "guerrillamail.com"]
+    
+    if not re.match(padrao, email):
+        return False, "Formato de e-mail inválido."
+    
+    dominio = email.split('@')[-1]
+    if dominio in dominios_bloqueados:
+        return False, "Domínios de e-mail temporários não são permitidos."
+    
+    return True, ""
 
 def send_recovery_email(to_email):
     msg = MIMEText(f"Olá! Você solicitou a recuperação de acesso ao Job Tracker.\nPara resetar sua senha, use o código temporário: RECOVERY2026")
@@ -46,10 +59,6 @@ def send_recovery_email(to_email):
         return True
     except:
         return False
-
-def validar_email(email):
-    padrao = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-    return re.match(padrao, email) is not None
 
 # --- CONTROLE DE SESSÃO ---
 if 'user_id' not in st.session_state:
@@ -67,10 +76,12 @@ def tela_acesso():
         
         with aba_login:
             with st.form("login_form"):
+                # Passo 4: .strip().lower() para sanitização total no Login
                 email_input = st.text_input("Email").strip().lower()
                 senha_input = st.text_input("Senha", type="password")
                 
                 if st.form_submit_button("Entrar"):
+                    # Proteção contra SQL Injection usando params (Passo 4)
                     res = conn.query(
                         "SELECT id, senha_hash FROM usuarios WHERE email = :e",
                         params={"e": email_input},
@@ -88,12 +99,14 @@ def tela_acesso():
             with st.form("cadastro_form"):
                 n_email = st.text_input("Novo Email").strip().lower()
                 n_senha = st.text_input("Senha (mín. 8 caracteres)", type="password")
-                n_confirma = st.text_input("Confirme a Senha", type="password")
+                n_senha_confirma = st.text_input("Confirme a Senha", type="password")
                 
                 if st.form_submit_button("Cadastrar"):
-                    if not validar_email(n_email):
-                        st.error("Por favor, insira um e-mail válido.")
-                    elif n_senha != n_confirma:
+                    eh_valido, mensagem = validar_email(n_email)
+                    
+                    if not eh_valido:
+                        st.error(mensagem)
+                    elif n_senha != n_senha_confirma:
                         st.error("As senhas não coincidem.")
                     elif len(n_senha) < 8:
                         st.warning("A senha deve ter pelo menos 8 caracteres.")
@@ -116,13 +129,14 @@ def tela_acesso():
         with aba_recuperar:
             r_email = st.text_input("Email para recuperação").strip().lower()
             if st.button("Enviar E-mail"):
-                if r_email:
+                eh_valido, _ = validar_email(r_email)
+                if eh_valido:
                     if send_recovery_email(r_email):
                         st.success("E-mail de recuperação enviado!")
                     else:
                         st.error("Erro no serviço de e-mail.")
                 else:
-                    st.warning("Informe o e-mail cadastrado.")
+                    st.warning("Informe um formato de e-mail válido.")
 
 # --- DASHBOARD PRINCIPAL (LOGADO) ---
 if st.session_state.user_id is None:
@@ -151,6 +165,7 @@ else:
                 except:
                     st.warning("Plataforma já cadastrada.")
         
+        # Lista plataformas usando query segura
         plats_df = conn.query(
             "SELECT nome_plataforma FROM plataformas_usuario WHERE user_id = :uid", 
             params={"uid": st.session_state.user_id},
@@ -186,7 +201,7 @@ else:
             f_link = st.text_input("Link da Vaga")
             f_recru = st.text_input("Recrutador")
             f_contato = st.text_input("Contato")
-            f_desc = st.text_area("Descrição", max_chars=3000)
+            f_desc = st.text_area("Descrição", max_chars=1500)
             
             if st.form_submit_button("Salvar no Banco"):
                 if f_vaga and f_plat:
@@ -210,8 +225,6 @@ else:
 
     # Tabela de Dados e Detalhes
     st.subheader("📊 Minhas Aplicações")
-    st.markdown('<p class="subtitle-text">Clique sobre uma vaga na tabela para ver sua descrição e requisitos abaixo.</p>', unsafe_allow_html=True)
-    
     df_vagas = conn.query(
         "SELECT * FROM candidaturas WHERE user_id = :uid ORDER BY data_cand DESC", 
         params={"uid": st.session_state.user_id},
@@ -219,56 +232,30 @@ else:
     )
     
     if not df_vagas.empty:
-        # 1. TABELA INTERATIVA
-        event = st.dataframe(
-            df_vagas[["vaga", "empresa", "data_cand", "plataforma"]], 
-            use_container_width=True,
-            hide_index=True
-        )
+        # 1. TABELA
+        cols_display = ["vaga", "data_cand", "plataforma", "empresa", "link_vaga", "recrutador", "contato_recrutador"]
+        st.data_editor(df_vagas[cols_display], use_container_width=True)
         
-        # 2. BLOCO DE DETALHES (Dinamizado pelo clique na tabela)
+        # 2. BLOCO DE DETALHES
         st.markdown("---")
         st.subheader("📝 Detalhes da Candidatura")
         
-        selecionado = event.selection.rows if hasattr(event, 'selection') else []
+        opcoes_vagas = df_vagas.apply(
+            lambda x: f"{x['vaga']} @ {x['empresa'] if x['empresa'] else 'N/A'}", axis=1
+        ).tolist()
         
-        if selecionado:
-            idx = selecionado[0]
-            detalhes = df_vagas.iloc[idx]
-            
-            st.markdown(f"### {detalhes['vaga']} @ {detalhes['empresa'] if detalhes['empresa'] else 'N/A'}")
-            
-            d_col1, d_col2, d_col3 = st.columns(3)
-            d_col1.write(f"📅 **Data:** {detalhes['data_cand']}")
-            d_col1.write(f"🖥️ **Plataforma:** {detalhes['plataforma']}")
-            
-            d_col2.write(f"👤 **Recrutador:** {detalhes['recrutador'] if detalhes['recrutador'] else 'N/A'}")
-            d_col2.write(f"📞 **Contato:** {detalhes['contato_recrutador'] if detalhes['contato_recrutador'] else 'N/A'}")
-            
-            sal_val = detalhes['salario'] if pd.notnull(detalhes['salario']) else 0.0
-            d_col3.write(f"💰 **Salário:** R$ {sal_val:,.2f}")
-            if detalhes['link_vaga']: d_col3.markdown(f"🔗 [Link da Vaga]({detalhes['link_vaga']})")
-            if detalhes['site_empresa']: d_col3.markdown(f"🌐 [Site Empresa]({detalhes['site_empresa']})")
-
-            st.markdown("**Descrição e Requisitos:**")
-            if detalhes['descricao']:
-                st.info(detalhes['descricao'])
-            else:
-                st.warning("Nenhuma descrição cadastrada.")
-            
-            if st.button("🗑️ Excluir esta Candidatura"):
-                with conn.session as s:
-                    s.execute(text("DELETE FROM candidaturas WHERE id = :id"), {"id": int(detalhes['id'])})
-                    s.commit()
-                st.success("Excluída!")
-                time.sleep(1)
-                st.rerun()
+        escolha = st.selectbox("Selecione uma vaga para ver os detalhes completos:", opcoes_vagas)
+        idx = opcoes_vagas.index(escolha)
+        detalhes = df_vagas.iloc[idx]
+        
+        if detalhes['descricao']:
+            st.info(f"**Descrição da vaga:**\n\n{detalhes['descricao']}")
         else:
-            st.info("Selecione uma vaga na tabela acima para visualizar os detalhes completos.")
+            st.warning("Esta candidatura não possui uma descrição detalhada.")
+        
+        st.markdown("---")
 
         # 3. GRÁFICOS
-        st.markdown("---")
-        st.subheader("📈 Análise de Candidaturas")
         g1, g2 = st.columns(2)
         with g1:
             fig_p = px.pie(df_vagas, names='plataforma', title='Por Plataforma', hole=0.4)
