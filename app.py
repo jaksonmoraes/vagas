@@ -25,12 +25,26 @@ st.markdown("""
 # --- CONEXÃO COM BANCO ---
 conn = st.connection("postgresql", type="sql", connect_args={"sslmode": "require"})
 
-# --- FUNÇÕES DE SEGURANÇA ---
+# --- FUNÇÕES DE SEGURANÇA E VALIDAÇÃO ---
 def hash_password(password):
     return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
 def check_password(password, hashed):
     return bcrypt.checkpw(password.encode(), hashed.encode())
+
+def validar_email(email):
+    # Passos 1 e 2: Regex para formato e bloqueio de e-mails descartáveis (Step 3)
+    padrao = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    dominios_bloqueados = ["10minutemail.com", "tempmail.com", "guerrillamail.com"]
+    
+    if not re.match(padrao, email):
+        return False, "Formato de e-mail inválido."
+    
+    dominio = email.split('@')[-1]
+    if dominio in dominios_bloqueados:
+        return False, "Domínios de e-mail temporários não são permitidos."
+    
+    return True, ""
 
 def send_recovery_email(to_email):
     msg = MIMEText(f"Olá! Você solicitou a recuperação de acesso ao Job Tracker.\nPara resetar sua senha, use o código temporário: RECOVERY2026")
@@ -45,11 +59,6 @@ def send_recovery_email(to_email):
         return True
     except:
         return False
-
-def validar_email(email):
-    # Regex padrão para validar e-mails
-    padrao = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-    return re.match(padrao, email) is not None
 
 # --- CONTROLE DE SESSÃO ---
 if 'user_id' not in st.session_state:
@@ -67,12 +76,12 @@ def tela_acesso():
         
         with aba_login:
             with st.form("login_form"):
-                # .strip().lower() limpa espaços e garante minúsculas (Case-Insensitive)
+                # Passo 4: .strip().lower() para sanitização total no Login
                 email_input = st.text_input("Email").strip().lower()
                 senha_input = st.text_input("Senha", type="password")
                 
                 if st.form_submit_button("Entrar"):
-                    # Proteção contra SQL Injection usando params
+                    # Proteção contra SQL Injection usando params (Passo 4)
                     res = conn.query(
                         "SELECT id, senha_hash FROM usuarios WHERE email = :e",
                         params={"e": email_input},
@@ -90,17 +99,21 @@ def tela_acesso():
             with st.form("cadastro_form"):
                 n_email = st.text_input("Novo Email").strip().lower()
                 n_senha = st.text_input("Senha (mín. 8 caracteres)", type="password")
+                n_senha_confirma = st.text_input("Confirme a Senha", type="password")
                 
                 if st.form_submit_button("Cadastrar"):
-                    if not validar_email(n_email):
-                        st.error("Por favor, insira um e-mail válido (ex: nome@email.com).")
+                    eh_valido, mensagem = validar_email(n_email)
+                    
+                    if not eh_valido:
+                        st.error(mensagem)
+                    elif n_senha != n_senha_confirma:
+                        st.error("As senhas não coincidem.")
                     elif len(n_senha) < 8:
                         st.warning("A senha deve ter pelo menos 8 caracteres.")
                     else:
                         senha_h = hash_password(n_senha)
                         try:
                             with conn.session as s:
-                                # INSERT seguro e parametrizado
                                 s.execute(
                                     text("INSERT INTO usuarios (email, senha_hash) VALUES (:e, :s)"),
                                     {"e": n_email, "s": senha_h}
@@ -116,13 +129,14 @@ def tela_acesso():
         with aba_recuperar:
             r_email = st.text_input("Email para recuperação").strip().lower()
             if st.button("Enviar E-mail"):
-                if r_email:
+                eh_valido, _ = validar_email(r_email)
+                if eh_valido:
                     if send_recovery_email(r_email):
                         st.success("E-mail de recuperação enviado!")
                     else:
                         st.error("Erro no serviço de e-mail.")
                 else:
-                    st.warning("Informe o e-mail cadastrado.")
+                    st.warning("Informe um formato de e-mail válido.")
 
 # --- DASHBOARD PRINCIPAL (LOGADO) ---
 if st.session_state.user_id is None:
@@ -218,11 +232,11 @@ else:
     )
     
     if not df_vagas.empty:
-        # 1. TABELA (Exibe colunas principais)
+        # 1. TABELA
         cols_display = ["vaga", "data_cand", "plataforma", "empresa", "link_vaga", "recrutador", "contato_recrutador"]
         st.data_editor(df_vagas[cols_display], use_container_width=True)
         
-        # 2. BLOCO DE DETALHES (Abaixo da Tabela)
+        # 2. BLOCO DE DETALHES
         st.markdown("---")
         st.subheader("📝 Detalhes da Candidatura")
         
