@@ -7,6 +7,7 @@ from datetime import date
 import plotly.express as px
 from sqlalchemy import text
 import time
+import re
 
 # --- CONFIGURAÇÃO E ESTILO ---
 st.set_page_config(page_title="Job Tracker Cloud", layout="wide")
@@ -44,6 +45,11 @@ def send_recovery_email(to_email):
         return True
     except:
         return False
+
+def validar_email(email):
+    # Regex padrão para validar e-mails
+    padrao = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    return re.match(padrao, email) is not None
 
 # --- CONTROLE DE SESSÃO ---
 if 'user_id' not in st.session_state:
@@ -86,7 +92,9 @@ def tela_acesso():
                 n_senha = st.text_input("Senha (mín. 8 caracteres)", type="password")
                 
                 if st.form_submit_button("Cadastrar"):
-                    if len(n_senha) < 8:
+                    if not validar_email(n_email):
+                        st.error("Por favor, insira um e-mail válido (ex: nome@email.com).")
+                    elif len(n_senha) < 8:
                         st.warning("A senha deve ter pelo menos 8 caracteres.")
                     else:
                         senha_h = hash_password(n_senha)
