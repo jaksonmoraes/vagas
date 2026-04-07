@@ -1,75 +1,58 @@
-# vagas
-Este repositório destina-se a disponibilizar um local onde o usuário pode ter um controle sobre as vagas as quais se candidatou.
-# 💼 Job Tracker - Gerenciador de Candidaturas (Privacy Focused)
+# 💼 Job Tracker Cloud
 
-![Python](https://img.shields.io/badge/python-3670A0?style=for-the-badge&logo=python&logoColor=ffdd54)
-![Streamlit](https://img.shields.io/badge/Streamlit-FF4B4B?style=for-the-badge&logo=Streamlit&logoColor=white)
-![Pandas](https://img.shields.io/badge/pandas-%23150458.svg?style=for-the-badge&logo=pandas&logoColor=white)
+O **Job Tracker Cloud** é um dashboard interativo desenvolvido em Python com Streamlit para o gerenciamento centralizado de candidaturas a vagas de emprego. O sistema permite cadastrar, visualizar e analisar o histórico de aplicações, agora utilizando persistência em banco de dados relacional e recursos avançados de segurança.
 
-Este é um sistema desenvolvido para auxiliar profissionais na organização e rastreio de candidaturas a vagas de emprego. O projeto foi construído com foco em **agilidade**, **análise de dados futura** e, principalmente, **privacidade do usuário**.
-
-## 🛡️ Privacidade e LGPD (General Data Protection Regulation)
-
-Diferente de sistemas convencionais, este rastreador foi arquitetado sob o princípio de **Privacy by Design**:
-
-* **Zero Data Storage:** O sistema não possui banco de dados persistente no servidor. Nenhuma informação inserida é salva ou acessada pelo administrador do projeto.
-* **Controle do Usuário:** Todos os dados residem na memória temporária da sessão do navegador. O usuário é o único detentor de suas informações.
-* **Portabilidade:** O sistema permite que o usuário baixe seu próprio banco de dados em formato `.csv` e o recarregue em sessões futuras, garantindo total autonomia sobre seus dados pessoais e profissionais.
-
----
-
-## 🚀 Funcionalidades
-
-* **Registro Completo:** Nome da vaga, empresa, cargo, salário, plataforma e links de acompanhamento.
-* **Gestão de Contatos:** Campo dedicado para nome e contato do recrutador.
-* **Visualização em Tempo Real:** Tabela dinâmica para consulta rápida das candidaturas ativas.
-* **Importação/Exportação:** Salve seu progresso localmente e retome quando quiser.
-
----
+## 🚀 Novidades desta Versão
+- **Banco de Dados Relacional:** Migração de CSV para PostgreSQL (via SQLAlchemy) para maior integridade e escalabilidade dos dados.
+- **Segurança Reforçada:** Implementação de hashing de senhas com `bcrypt` e validação de e-mails com Regex.
+- **UX Interativa:** Seleção dinâmica de candidaturas diretamente na tabela para visualização de detalhes.
+- **Persistência de Plataformas:** Cadastro personalizado de plataformas de vagas por usuário.
 
 ## 🛠️ Tecnologias Utilizadas
+- **Python 3.10+**
+- **Streamlit:** Interface web e dashboard.
+- **SQLAlchemy:** ORM para comunicação com o PostgreSQL.
+- **PostgreSQL:** Banco de dados relacional.
+- **Pandas:** Manipulação de dados e integração com tabelas.
+- **Plotly Express:** Visualizações gráficas de desempenho.
+- **Bcrypt:** Criptografia de senhas.
 
-* **Linguagem:** Python
-* **Interface:** Streamlit (Framework Web para Ciência de Dados)
-* **Manipulação de Dados:** Pandas
-* **Deployment:** Streamlit Community Cloud
+## 📋 Funcionalidades
+- **Autenticação:** Sistema de Login e Cadastro com validação de formato de e-mail e confirmação de senha.
+- **Gestão de Candidaturas:** Cadastro completo incluindo Vaga, Empresa, Link, Recrutador, Contato, Salário Pretendido e Descrição Detalhada.
+- **Visualização Inteligente:**
+  - Tabela interativa com `on_select` para carregar detalhes sem trocar de tela.
+  - Gráfico de pizza por plataforma de vaga.
+  - Gráfico de barras de volume de candidaturas diárias.
+- **Gestão de Plataformas:** Adição e remoção de plataformas (LinkedIn, Gupy, etc.) diretamente via Sidebar.
 
----
+## ⚙️ Configuração (Secrets)
+Para rodar este projeto, é necessário configurar o arquivo `.streamlit/secrets.toml` com as credenciais do banco e do serviço de e-mail:
 
-## 💻 Como Rodar o Projeto Localmente
+```toml
+[connections.postgresql]
+dialect = "postgresql"
+host = "seu-host"
+user = "seu-usuario"
+password = "sua-senha"
+database = "seu-banco"
+port = 5432
 
-1.  **Clone o repositório:**
-    ```bash
-    git clone [https://github.com/jaksonmoraes/vagas.git](https://github.com/jaksonmoraes/vagas.git)
-    cd vagas
-    ```
+[email_auth]
+smtp_server = "smtp.gmail.com"
+smtp_port = 587
+smtp_user = "seu-email@gmail.com"
+smtp_pass = "sua-senha-de-app"
 
-2.  **Crie e ative o ambiente virtual:**
-    ```bash
-    python -m venv venv
-    # Windows
-    .\venv\Scripts\activate
-    # Linux/Mac
-    source venv/bin/activate
-    ```
 
-3.  **Instale as dependências:**
-    ```bash
-    pip install -r requirements.txt
-    ```
+🏗️ Estrutura do Banco (SQL)
+O sistema espera as tabelas usuarios, plataformas_usuario e candidaturas.
+Dica: Certifique-se de aplicar a CONSTRAINT de formato de e-mail no banco para garantir a integridade dos dados.
 
-4.  **Execute a aplicação:**
-    ```bash
-    streamlit run app.py
-    ```
+-- Exemplo de constraint de e-mail aplicada
+ALTER TABLE usuarios ADD CONSTRAINT email_check 
+CHECK (email ~* '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[a-zA-Z]{2,}$');
 
----
 
-## 📈 Próximos Passos (Roadmap)
-- [ ] Implementação de Dashboard de análise (Gráficos de taxas de conversão por plataforma).
-- [ ] Filtros por status da candidatura (Em andamento, Entrevista, Finalizado).
-- [ ] Cálculo de tempo médio de resposta das empresas.
-
----
-
-**Desenvolvido por [Jakson Moraes](https://www.linkedin.com/in/SEU-PERFIL-AQUI/)**
+✒️ Autor
+**Jakson Moraes - [Jakson Moraes](https://www.linkedin.com/in/SEU-PERFIL-AQUI/)**
