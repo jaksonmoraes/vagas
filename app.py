@@ -233,7 +233,7 @@ else:
     
     if not df_vagas.empty:
         # 1. TABELA
-        cols_display = ["vaga", "data_cand", "plataforma", "empresa", "link_vaga", "recrutador", "contato_recrutador"]
+        cols_display = ["vaga", "data_cand", "plataforma", "empresa", "link_vaga", "recrutador", "contato_recrutador", "salario"]
         st.data_editor(df_vagas[cols_display], use_container_width=True)
         
         # 2. BLOCO DE DETALHES
@@ -247,6 +247,8 @@ else:
         escolha = st.selectbox("Selecione uma vaga para ver os detalhes completos:", opcoes_vagas)
         idx = opcoes_vagas.index(escolha)
         detalhes = df_vagas.iloc[idx]
+        
+        st.write(f"**Salário:** R$ {detalhes['salario']:.2f}" if detalhes['salario'] > 0 else "**Salário:** Não informado")
         
         if detalhes['descricao']:
             st.info(f"**Descrição da vaga:**\n\n{detalhes['descricao']}")
