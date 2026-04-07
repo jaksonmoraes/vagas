@@ -55,4 +55,4 @@ CHECK (email ~* '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[a-zA-Z]{2,}$');
 
 
 ✒️ Autor
-**Jakson Moraes - [Jakson Moraes](https://www.linkedin.com/in/SEU-PERFIL-AQUI/)**
+**Jakson Moraes - GitHub**
