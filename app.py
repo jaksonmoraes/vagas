@@ -177,6 +177,37 @@ else:
     # Tabela de Dados (Filtrada por Usuário)
     st.subheader("📊 Minhas Aplicações")
     df_vagas = conn.query(f"SELECT * FROM candidaturas WHERE user_id = '{st.session_state.user_id}' ORDER BY data_cand DESC", ttl=0)
+
+
+    # --- INSERIR O CÓDIGO DO SELECTBOX AQUI (Entre a tabela e o gráfico) ---
+
+if not df_vagas.empty:
+    st.markdown("---")
+    st.subheader("📝 Detalhes da Candidatura")
+    
+    # Criamos a lista de opções combinando Vaga e Empresa para facilitar a leitura
+    opcoes_vagas = df_vagas.apply(
+        lambda x: f"{x['vaga']} @ {x['empresa'] if x.get('empresa') else 'Não Informada'}", 
+        axis=1
+    ).tolist()
+    
+    # O selectbox para o usuário escolher qual descrição quer ler
+    escolha = st.selectbox("Selecione uma vaga para ver os detalhes:", opcoes_vagas)
+    
+    # Pegamos o índice da escolha para buscar a descrição correta no DataFrame
+    idx = opcoes_vagas.index(escolha)
+    detalhes = df_vagas.iloc[idx]
+    
+    # Exibição elegante da descrição
+    if detalhes['descricao']:
+        st.info(f"**Descrição da vaga:**\n\n{detalhes['descricao']}")
+    else:
+        st.warning("Esta candidatura não possui uma descrição detalhada.")
+    
+    st.markdown("---")
+
+# --- FIM DO TRECHO ---
+
     
     if not df_vagas.empty:
         # Reordenação para exibição
