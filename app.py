@@ -32,17 +32,17 @@ def check_password(password, hashed):
     return bcrypt.checkpw(password.encode(), hashed.encode())
 
 def send_recovery_email(to_email):
-    msg = MIMEText(f"Olá! Você solicitou a recuperação de acesso ao Job Tracker.\nPara resetar sua senha, entre em contato com o administrador ou use o código temporário: RECOVERY2026")
+    msg = MIMEText(f"Olá! Você solicitou a recuperação de acesso ao Job Tracker.\nPara resetar sua senha, use o código temporário: RECOVERY2026")
     msg['Subject'] = 'Recuperação de Acesso - Job Tracker'
     msg['From'] = st.secrets["email_auth"]["smtp_user"]
-    msg['To'] = to_email
+    msg['To'] = to_email.strip().lower()
     try:
         with smtplib.SMTP(st.secrets["email_auth"]["smtp_server"], st.secrets["email_auth"]["smtp_port"]) as server:
             server.starttls()
             server.login(st.secrets["email_auth"]["smtp_user"], st.secrets["email_auth"]["smtp_pass"])
             server.send_message(msg)
         return True
-    except Exception as e:
+    except:
         return False
 
 # --- CONTROLE DE SESSÃO ---
@@ -61,21 +61,30 @@ def tela_acesso():
         
         with aba_login:
             with st.form("login_form"):
-                email = st.text_input("Email")
-                senha = st.text_input("Senha", type="password")
+                # .strip().lower() limpa espaços e garante minúsculas (Case-Insensitive)
+                email_input = st.text_input("Email").strip().lower()
+                senha_input = st.text_input("Senha", type="password")
+                
                 if st.form_submit_button("Entrar"):
-                    res = conn.query(f"SELECT id, senha_hash FROM usuarios WHERE email = '{email}'", ttl=0)
-                    if not res.empty and check_password(senha, res.iloc[0]['senha_hash']):
+                    # Proteção contra SQL Injection usando params
+                    res = conn.query(
+                        "SELECT id, senha_hash FROM usuarios WHERE email = :e",
+                        params={"e": email_input},
+                        ttl=0
+                    )
+                    
+                    if not res.empty and check_password(senha_input, res.iloc[0]['senha_hash']):
                         st.session_state.user_id = res.iloc[0]['id']
-                        st.session_state.user_email = email
+                        st.session_state.user_email = email_input
                         st.rerun()
                     else:
                         st.error("Usuário ou senha incorretos.")
 
         with aba_cadastro:
             with st.form("cadastro_form"):
-                n_email = st.text_input("Novo Email")
+                n_email = st.text_input("Novo Email").strip().lower()
                 n_senha = st.text_input("Senha (mín. 8 caracteres)", type="password")
+                
                 if st.form_submit_button("Cadastrar"):
                     if len(n_senha) < 8:
                         st.warning("A senha deve ter pelo menos 8 caracteres.")
@@ -83,22 +92,29 @@ def tela_acesso():
                         senha_h = hash_password(n_senha)
                         try:
                             with conn.session as s:
-                                s.execute(text("INSERT INTO usuarios (email, senha_hash) VALUES (:e, :s)"), {"e": n_email, "s": senha_h})
+                                # INSERT seguro e parametrizado
+                                s.execute(
+                                    text("INSERT INTO usuarios (email, senha_hash) VALUES (:e, :s)"),
+                                    {"e": n_email, "s": senha_h}
+                                )
                                 s.commit()
                             st.success("Conta criada! Faça login.")
                         except Exception as e:
                             if "unique constraint" in str(e).lower():
                                 st.error("Este email já está em uso.")
                             else:
-                                st.error(f"Erro de conexão com o banco: {str(e)[:100]}")
+                                st.error("Erro ao processar cadastro no banco de dados.")
         
         with aba_recuperar:
-            r_email = st.text_input("Email para recuperação")
+            r_email = st.text_input("Email para recuperação").strip().lower()
             if st.button("Enviar E-mail"):
-                if send_recovery_email(r_email):
-                    st.success("E-mail de recuperação enviado!")
+                if r_email:
+                    if send_recovery_email(r_email):
+                        st.success("E-mail de recuperação enviado!")
+                    else:
+                        st.error("Erro no serviço de e-mail.")
                 else:
-                    st.error("Erro ao enviar e-mail. Verifique suas configurações de SMTP.")
+                    st.warning("Informe o e-mail cadastrado.")
 
 # --- DASHBOARD PRINCIPAL (LOGADO) ---
 if st.session_state.user_id is None:
@@ -118,22 +134,32 @@ else:
             if nova_p:
                 try:
                     with conn.session as s:
-                        s.execute(text("INSERT INTO plataformas_usuario (user_id, nome_plataforma) VALUES (:uid, :nome)"), 
-                                  {"uid": st.session_state.user_id, "nome": nova_p})
+                        s.execute(
+                            text("INSERT INTO plataformas_usuario (user_id, nome_plataforma) VALUES (:uid, :nome)"), 
+                            {"uid": st.session_state.user_id, "nome": nova_p}
+                        )
                         s.commit()
                     st.rerun()
                 except:
                     st.warning("Plataforma já cadastrada.")
         
-        plats_df = conn.query(f"SELECT nome_plataforma FROM plataformas_usuario WHERE user_id = '{st.session_state.user_id}'", ttl=0)
+        # Lista plataformas usando query segura
+        plats_df = conn.query(
+            "SELECT nome_plataforma FROM plataformas_usuario WHERE user_id = :uid", 
+            params={"uid": st.session_state.user_id},
+            ttl=0
+        )
         lista_plats = plats_df['nome_plataforma'].tolist()
+        
         for p in lista_plats:
             c_p1, c_p2 = st.columns([4, 1])
             c_p1.write(f"• {p}")
             if c_p2.button("🗑️", key=f"del_{p}"):
                 with conn.session as s:
-                    s.execute(text("DELETE FROM plataformas_usuario WHERE user_id = :uid AND nome_plataforma = :nome"), 
-                              {"uid": st.session_state.user_id, "nome": p})
+                    s.execute(
+                        text("DELETE FROM plataformas_usuario WHERE user_id = :uid AND nome_plataforma = :nome"), 
+                        {"uid": st.session_state.user_id, "nome": p}
+                    )
                     s.commit()
                 st.rerun()
 
@@ -171,17 +197,21 @@ else:
                         time.sleep(1)
                         st.rerun() 
                     except Exception as e:
-                        st.error(f"Erro ao salvar: {e}")
+                        st.error(f"Erro ao salvar candidatura.")
                 else:
                     st.error("Vaga e Plataforma são campos obrigatórios.")
 
     # Tabela de Dados e Detalhes
     st.subheader("📊 Minhas Aplicações")
-    df_vagas = conn.query(f"SELECT * FROM candidaturas WHERE user_id = '{st.session_state.user_id}' ORDER BY data_cand DESC", ttl=0)
+    df_vagas = conn.query(
+        "SELECT * FROM candidaturas WHERE user_id = :uid ORDER BY data_cand DESC", 
+        params={"uid": st.session_state.user_id},
+        ttl=0
+    )
     
     if not df_vagas.empty:
-        # 1. TABELA (Sem a coluna descrição para ficar limpa)
-        cols_display = ["vaga", "data_cand", "plataforma", "empresa", "link_vaga", "recrutador", "contato_recrutador", "site_empresa"]
+        # 1. TABELA (Exibe colunas principais)
+        cols_display = ["vaga", "data_cand", "plataforma", "empresa", "link_vaga", "recrutador", "contato_recrutador"]
         st.data_editor(df_vagas[cols_display], use_container_width=True)
         
         # 2. BLOCO DE DETALHES (Abaixo da Tabela)
