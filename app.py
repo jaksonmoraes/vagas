@@ -18,6 +18,7 @@ st.markdown("""
     ::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 10px; }
     ::-webkit-scrollbar-thumb { background: #ccc; border-radius: 10px; border: 2px solid #f1f1f1; }
     ::-webkit-scrollbar-thumb:hover { background: #888; }
+    .subtitle-text { color: #666; font-size: 0.9rem; margin-top: -5px; margin-bottom: 15px; }
     #MainMenu {visibility: hidden;} footer {visibility: hidden;}
     </style>
     """, unsafe_allow_html=True)
@@ -25,7 +26,7 @@ st.markdown("""
 # --- CONEXÃO COM BANCO ---
 conn = st.connection("postgresql", type="sql", connect_args={"sslmode": "require"})
 
-# --- FUNÇÕES DE SEGURANÇA E VALIDAÇÃO ---
+# --- FUNÇÕES DE SEGURANÇA ---
 def hash_password(password):
     return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
@@ -33,32 +34,10 @@ def check_password(password, hashed):
     return bcrypt.checkpw(password.encode(), hashed.encode())
 
 def validar_email(email):
-    # Passos 1 e 2: Regex para formato e bloqueio de e-mails descartáveis (Step 3)
     padrao = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-    dominios_bloqueados = ["10minutemail.com", "tempmail.com", "guerrillamail.com"]
-    
     if not re.match(padrao, email):
         return False, "Formato de e-mail inválido."
-    
-    dominio = email.split('@')[-1]
-    if dominio in dominios_bloqueados:
-        return False, "Domínios de e-mail temporários não são permitidos."
-    
     return True, ""
-
-def send_recovery_email(to_email):
-    msg = MIMEText(f"Olá! Você solicitou a recuperação de acesso ao Job Tracker.\nPara resetar sua senha, use o código temporário: RECOVERY2026")
-    msg['Subject'] = 'Recuperação de Acesso - Job Tracker'
-    msg['From'] = st.secrets["email_auth"]["smtp_user"]
-    msg['To'] = to_email.strip().lower()
-    try:
-        with smtplib.SMTP(st.secrets["email_auth"]["smtp_server"], st.secrets["email_auth"]["smtp_port"]) as server:
-            server.starttls()
-            server.login(st.secrets["email_auth"]["smtp_user"], st.secrets["email_auth"]["smtp_pass"])
-            server.send_message(msg)
-        return True
-    except:
-        return False
 
 # --- CONTROLE DE SESSÃO ---
 if 'user_id' not in st.session_state:
@@ -69,201 +48,126 @@ if 'user_email' not in st.session_state:
 # --- TELAS DE AUTENTICAÇÃO ---
 def tela_acesso():
     st.title("💼 Job Tracker Cloud")
-    col1, col2 = st.columns([1, 1])
-    
+    col1, _ = st.columns([1, 1])
     with col1:
-        aba_login, aba_cadastro, aba_recuperar = st.tabs(["Login", "Criar Conta", "Recuperar"])
-        
+        aba_login, aba_cadastro = st.tabs(["Login", "Criar Conta"])
         with aba_login:
             with st.form("login_form"):
-                # Passo 4: .strip().lower() para sanitização total no Login
-                email_input = st.text_input("Email").strip().lower()
-                senha_input = st.text_input("Senha", type="password")
-                
+                email_i = st.text_input("Email").strip().lower()
+                senha_i = st.text_input("Senha", type="password")
                 if st.form_submit_button("Entrar"):
-                    # Proteção contra SQL Injection usando params (Passo 4)
-                    res = conn.query(
-                        "SELECT id, senha_hash FROM usuarios WHERE email = :e",
-                        params={"e": email_input},
-                        ttl=0
-                    )
-                    
-                    if not res.empty and check_password(senha_input, res.iloc[0]['senha_hash']):
+                    res = conn.query("SELECT id, senha_hash FROM usuarios WHERE email = :e", params={"e": email_i}, ttl=0)
+                    if not res.empty and check_password(senha_i, res.iloc[0]['senha_hash']):
                         st.session_state.user_id = res.iloc[0]['id']
-                        st.session_state.user_email = email_input
+                        st.session_state.user_email = email_i
                         st.rerun()
-                    else:
-                        st.error("Usuário ou senha incorretos.")
-
+                    else: st.error("Incorreto.")
         with aba_cadastro:
             with st.form("cadastro_form"):
                 n_email = st.text_input("Novo Email").strip().lower()
-                n_senha = st.text_input("Senha (mín. 8 caracteres)", type="password")
-                n_senha_confirma = st.text_input("Confirme a Senha", type="password")
-                
+                n_senha = st.text_input("Senha (mín. 8)", type="password")
+                n_conf = st.text_input("Confirme", type="password")
                 if st.form_submit_button("Cadastrar"):
-                    eh_valido, mensagem = validar_email(n_email)
-                    
-                    if not eh_valido:
-                        st.error(mensagem)
-                    elif n_senha != n_senha_confirma:
-                        st.error("As senhas não coincidem.")
-                    elif len(n_senha) < 8:
-                        st.warning("A senha deve ter pelo menos 8 caracteres.")
+                    v, msg = validar_email(n_email)
+                    if not v: st.error(msg)
+                    elif n_senha != n_conf: st.error("Senhas diferentes.")
+                    elif len(n_senha) < 8: st.warning("Mínimo 8 caracteres.")
                     else:
-                        senha_h = hash_password(n_senha)
                         try:
                             with conn.session as s:
-                                s.execute(
-                                    text("INSERT INTO usuarios (email, senha_hash) VALUES (:e, :s)"),
-                                    {"e": n_email, "s": senha_h}
-                                )
+                                s.execute(text("INSERT INTO usuarios (email, senha_hash) VALUES (:e, :s)"), {"e": n_email, "s": hash_password(n_senha)})
                                 s.commit()
-                            st.success("Conta criada! Faça login.")
-                        except Exception as e:
-                            if "unique constraint" in str(e).lower():
-                                st.error("Este email já está em uso.")
-                            else:
-                                st.error("Erro ao processar cadastro no banco de dados.")
-        
-        with aba_recuperar:
-            r_email = st.text_input("Email para recuperação").strip().lower()
-            if st.button("Enviar E-mail"):
-                eh_valido, _ = validar_email(r_email)
-                if eh_valido:
-                    if send_recovery_email(r_email):
-                        st.success("E-mail de recuperação enviado!")
-                    else:
-                        st.error("Erro no serviço de e-mail.")
-                else:
-                    st.warning("Informe um formato de e-mail válido.")
+                            st.success("Criado!")
+                        except: st.error("Erro no cadastro.")
 
-# --- DASHBOARD PRINCIPAL (LOGADO) ---
+# --- DASHBOARD ---
 if st.session_state.user_id is None:
     tela_acesso()
 else:
-    # Sidebar: Gestão de Plataformas
+    # Sidebar
     with st.sidebar:
         st.header(f"👤 {st.session_state.user_email}")
         if st.button("Sair"):
             st.session_state.user_id = None
             st.rerun()
-        
         st.divider()
-        st.subheader("Minhas Plataformas")
-        nova_p = st.text_input("Adicionar Plataforma")
+        plats_df = conn.query("SELECT nome_plataforma FROM plataformas_usuario WHERE user_id = :uid", params={"uid": st.session_state.user_id}, ttl=0)
+        lista_plats = plats_df['nome_plataforma'].tolist()
+        nova_p = st.text_input("Nova Plataforma")
         if st.button("Adicionar"):
             if nova_p:
-                try:
-                    with conn.session as s:
-                        s.execute(
-                            text("INSERT INTO plataformas_usuario (user_id, nome_plataforma) VALUES (:uid, :nome)"), 
-                            {"uid": st.session_state.user_id, "nome": nova_p}
-                        )
-                        s.commit()
-                    st.rerun()
-                except:
-                    st.warning("Plataforma já cadastrada.")
-        
-        # Lista plataformas usando query segura
-        plats_df = conn.query(
-            "SELECT nome_plataforma FROM plataformas_usuario WHERE user_id = :uid", 
-            params={"uid": st.session_state.user_id},
-            ttl=0
-        )
-        lista_plats = plats_df['nome_plataforma'].tolist()
-        
-        for p in lista_plats:
-            c_p1, c_p2 = st.columns([4, 1])
-            c_p1.write(f"• {p}")
-            if c_p2.button("🗑️", key=f"del_{p}"):
                 with conn.session as s:
-                    s.execute(
-                        text("DELETE FROM plataformas_usuario WHERE user_id = :uid AND nome_plataforma = :nome"), 
-                        {"uid": st.session_state.user_id, "nome": p}
-                    )
+                    s.execute(text("INSERT INTO plataformas_usuario (user_id, nome_plataforma) VALUES (:uid, :n)"), {"uid": st.session_state.user_id, "n": nova_p})
                     s.commit()
                 st.rerun()
 
-    # Formulário de Cadastro de Vaga
-    with st.expander("➕ Nova Candidatura", expanded=False):
-        with st.form("add_vaga", clear_on_submit=True):
-            col_v1, col_v2 = st.columns(2)
-            with col_v1:
-                f_vaga = st.text_input("Vaga*")
-                f_empresa = st.text_input("Empresa")
-                f_site = st.text_input("Site Empresa")
-            with col_v2:
-                f_data = st.date_input("Data", date.today())
-                f_plat = st.selectbox("Plataforma*", [""] + (lista_plats if lista_plats else []))
-                f_salario = st.number_input("Salário", min_value=0.0)
-            
-            f_link = st.text_input("Link da Vaga")
-            f_recru = st.text_input("Recrutador")
-            f_contato = st.text_input("Contato")
-            f_desc = st.text_area("Descrição", max_chars=1500)
-            
-            if st.form_submit_button("Salvar no Banco"):
-                if f_vaga and f_plat:
-                    try:
-                        with conn.session as s:
-                            query_ins = text("""INSERT INTO candidaturas 
-                                (user_id, vaga, data_cand, plataforma, empresa, descricao, link_vaga, recrutador, contato_recrutador, site_empresa, salario) 
-                                VALUES (:uid, :v, :d, :p, :e, :desc, :l, :r, :c, :s_e, :sal)""")
-                            s.execute(query_ins, {
-                                "uid": st.session_state.user_id, "v": f_vaga, "d": f_data, "p": f_plat, "e": f_empresa, 
-                                "desc": f_desc, "l": f_link, "r": f_recru, "c": f_contato, "s_e": f_site, "sal": f_salario
-                            })
-                            s.commit()
-                        st.success("Vaga salva com sucesso!")
-                        time.sleep(1)
-                        st.rerun() 
-                    except Exception as e:
-                        st.error(f"Erro ao salvar candidatura.")
-                else:
-                    st.error("Vaga e Plataforma são campos obrigatórios.")
+    # Nova Vaga
+    with st.expander("➕ Nova Candidatura"):
+        with st.form("vaga_form", clear_on_submit=True):
+            c1, c2 = st.columns(2)
+            v = c1.text_input("Vaga*")
+            e = c1.text_input("Empresa")
+            d = c2.date_input("Data", date.today())
+            p = c2.selectbox("Plataforma*", [""] + lista_plats)
+            desc = st.text_area("Descrição", max_chars=3000)
+            if st.form_submit_button("Salvar"):
+                if v and p:
+                    with conn.session as s:
+                        s.execute(text("INSERT INTO candidaturas (user_id, vaga, data_cand, plataforma, empresa, descricao) VALUES (:uid, :v, :d, :p, :e, :desc)"),
+                                  {"uid": st.session_state.user_id, "v": v, "d": d, "p": p, "e": e, "desc": desc})
+                        s.commit()
+                    st.success("Salvo!")
+                    time.sleep(1)
+                    st.rerun()
 
-    # Tabela de Dados e Detalhes
+    # Listagem e Seleção
     st.subheader("📊 Minhas Aplicações")
-    df_vagas = conn.query(
-        "SELECT * FROM candidaturas WHERE user_id = :uid ORDER BY data_cand DESC", 
-        params={"uid": st.session_state.user_id},
-        ttl=0
-    )
+    st.markdown('<p class="subtitle-text">Clique no quadrado ao lado da vaga para ver detalhes abaixo.</p>', unsafe_allow_html=True)
+    
+    df_vagas = conn.query("SELECT * FROM candidaturas WHERE user_id = :uid ORDER BY data_cand DESC", params={"uid": st.session_state.user_id}, ttl=0)
     
     if not df_vagas.empty:
-        # 1. TABELA
-        cols_display = ["vaga", "data_cand", "plataforma", "empresa", "link_vaga", "recrutador", "contato_recrutador"]
-        st.data_editor(df_vagas[cols_display], use_container_width=True)
-        
-        # 2. BLOCO DE DETALHES
+        # Forma compatível com versões anteriores do Streamlit (st.dataframe com seleção)
+        # Se a sua versão não suportar 'on_select', usamos o retorno direto do event
+        event = st.dataframe(
+            df_vagas[["vaga", "empresa", "data_cand", "plataforma"]], 
+            use_container_width=True,
+            hide_index=True
+        )
+
         st.markdown("---")
         st.subheader("📝 Detalhes da Candidatura")
-        
-        opcoes_vagas = df_vagas.apply(
-            lambda x: f"{x['vaga']} @ {x['empresa'] if x['empresa'] else 'N/A'}", axis=1
-        ).tolist()
-        
-        escolha = st.selectbox("Selecione uma vaga para ver os detalhes completos:", opcoes_vagas)
-        idx = opcoes_vagas.index(escolha)
-        detalhes = df_vagas.iloc[idx]
-        
-        if detalhes['descricao']:
-            st.info(f"**Descrição da vaga:**\n\n{detalhes['descricao']}")
-        else:
-            st.warning("Esta candidatura não possui uma descrição detalhada.")
-        
-        st.markdown("---")
 
-        # 3. GRÁFICOS
+        # Captura a seleção de forma segura
+        try:
+            selecionado = event.selection.rows
+            if selecionado:
+                idx = selecionado[0]
+                detalhes = df_vagas.iloc[idx]
+                
+                st.markdown(f"### {detalhes['vaga']} @ {detalhes['empresa']}")
+                if detalhes['descricao']:
+                    st.info(detalhes['descricao'])
+                else:
+                    st.warning("Sem descrição.")
+                
+                if st.button("🗑️ Excluir Candidatura"):
+                    with conn.session as s:
+                        s.execute(text("DELETE FROM candidaturas WHERE id = :id"), {"id": int(detalhes['id'])})
+                        s.commit()
+                    st.success("Removido!")
+                    time.sleep(1)
+                    st.rerun()
+            else:
+                st.write("Selecione uma vaga acima para ver os detalhes.")
+        except:
+            st.info("Clique na linha da tabela para carregar os detalhes.")
+
+        # Gráficos
+        st.divider()
         g1, g2 = st.columns(2)
         with g1:
-            fig_p = px.pie(df_vagas, names='plataforma', title='Por Plataforma', hole=0.4)
-            st.plotly_chart(fig_p, use_container_width=True)
+            st.plotly_chart(px.pie(df_vagas, names='plataforma', title='Candidaturas por Plataforma', hole=0.4), use_container_width=True)
         with g2:
             df_vagas['data_cand'] = pd.to_datetime(df_vagas['data_cand'])
-            df_timeline = df_vagas.groupby('data_cand').size().reset_index(name='qtd')
-            fig_t = px.bar(df_timeline, x='data_cand', y='qtd', title='Candidaturas por Dia')
-            st.plotly_chart(fig_t, use_container_width=True)
-    else:
-        st.info("Nenhuma candidatura encontrada. Comece cadastrando uma acima!")
+            st.plotly_chart(px.bar(df_vagas.groupby('data_cand').size().reset_index(name='qtd'), x='data_cand', y='qtd', title='Volume Diário'), use_container_width=True)
