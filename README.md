@@ -1,4 +1,4 @@
-# 💼 Job Tracker Cloud
+# 💼 Minhas Vagas
 
 O **Job Tracker Cloud** é um dashboard interativo desenvolvido em Python com Streamlit para o gerenciamento centralizado de candidaturas a vagas de emprego. O sistema permite cadastrar, visualizar e analisar o histórico de aplicações, agora utilizando persistência em banco de dados relacional e recursos avançados de segurança.
 
