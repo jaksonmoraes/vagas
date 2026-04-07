@@ -6,6 +6,7 @@ from email.mime.text import MIMEText
 from datetime import date
 import plotly.express as px
 from sqlalchemy import text
+import time
 
 # --- CONFIGURAÇÃO E ESTILO ---
 st.set_page_config(page_title="Job Tracker Cloud", layout="wide")
@@ -86,17 +87,24 @@ def tela_acesso():
                                 s.commit()
                             st.success("Conta criada! Faça login.")
                         except Exception as e:
-                            # Aqui pegamos o erro real do banco
                             if "unique constraint" in str(e).lower():
                                 st.error("Este email já está em uso.")
                             else:
                                 st.error(f"Erro de conexão com o banco: {str(e)[:100]}")
+        
+        with aba_recuperar:
+            r_email = st.text_input("Email para recuperação")
+            if st.button("Enviar E-mail"):
+                if send_recovery_email(r_email):
+                    st.success("E-mail de recuperação enviado!")
+                else:
+                    st.error("Erro ao enviar e-mail. Verifique suas configurações de SMTP.")
 
 # --- DASHBOARD PRINCIPAL (LOGADO) ---
 if st.session_state.user_id is None:
     tela_acesso()
 else:
-    # Sidebar: Gestão de Plataformas no Banco
+    # Sidebar: Gestão de Plataformas
     with st.sidebar:
         st.header(f"👤 {st.session_state.user_email}")
         if st.button("Sair"):
@@ -111,13 +119,12 @@ else:
                 try:
                     with conn.session as s:
                         s.execute(text("INSERT INTO plataformas_usuario (user_id, nome_plataforma) VALUES (:uid, :nome)"), 
-                                 {"uid": st.session_state.user_id, "nome": nova_p})
+                                  {"uid": st.session_state.user_id, "nome": nova_p})
                         s.commit()
                     st.rerun()
                 except:
                     st.warning("Plataforma já cadastrada.")
         
-        # Lista plataformas do usuário
         plats_df = conn.query(f"SELECT nome_plataforma FROM plataformas_usuario WHERE user_id = '{st.session_state.user_id}'", ttl=0)
         lista_plats = plats_df['nome_plataforma'].tolist()
         for p in lista_plats:
@@ -126,13 +133,12 @@ else:
             if c_p2.button("🗑️", key=f"del_{p}"):
                 with conn.session as s:
                     s.execute(text("DELETE FROM plataformas_usuario WHERE user_id = :uid AND nome_plataforma = :nome"), 
-                             {"uid": st.session_state.user_id, "nome": p})
+                              {"uid": st.session_state.user_id, "nome": p})
                     s.commit()
                 st.rerun()
 
     # Formulário de Cadastro de Vaga
     with st.expander("➕ Nova Candidatura", expanded=False):
-        # Usamos o clear_on_submit=True para ajudar na limpeza visual
         with st.form("add_vaga", clear_on_submit=True):
             col_v1, col_v2 = st.columns(2)
             with col_v1:
@@ -141,8 +147,7 @@ else:
                 f_site = st.text_input("Site Empresa")
             with col_v2:
                 f_data = st.date_input("Data", date.today())
-                # Garantimos que a lista de plataformas não quebre se estiver vazia
-                f_plat = st.selectbox("Plataforma*", [""] + (lista_plats if 'lista_plats' in locals() else []))
+                f_plat = st.selectbox("Plataforma*", [""] + (lista_plats if lista_plats else []))
                 f_salario = st.number_input("Salário", min_value=0.0)
             
             f_link = st.text_input("Link da Vaga")
@@ -162,60 +167,43 @@ else:
                                 "desc": f_desc, "l": f_link, "r": f_recru, "c": f_contato, "s_e": f_site, "sal": f_salario
                             })
                             s.commit()
-                        
                         st.success("Vaga salva com sucesso!")
-                        # O PULO DO GATO: Aguarda um breve momento e reinicia a página
-                        import time
                         time.sleep(1)
                         st.rerun() 
-                        
                     except Exception as e:
                         st.error(f"Erro ao salvar: {e}")
                 else:
                     st.error("Vaga e Plataforma são campos obrigatórios.")
 
-    # Tabela de Dados (Filtrada por Usuário)
+    # Tabela de Dados e Detalhes
     st.subheader("📊 Minhas Aplicações")
     df_vagas = conn.query(f"SELECT * FROM candidaturas WHERE user_id = '{st.session_state.user_id}' ORDER BY data_cand DESC", ttl=0)
-
-
-    # --- INSERIR O CÓDIGO DO SELECTBOX AQUI (Entre a tabela e o gráfico) ---
-
-if not df_vagas.empty:
-    st.markdown("---")
-    st.subheader("📝 Detalhes da Candidatura")
-    
-    # Criamos a lista de opções combinando Vaga e Empresa para facilitar a leitura
-    opcoes_vagas = df_vagas.apply(
-        lambda x: f"{x['vaga']} @ {x['empresa'] if x.get('empresa') else 'Não Informada'}", 
-        axis=1
-    ).tolist()
-    
-    # O selectbox para o usuário escolher qual descrição quer ler
-    escolha = st.selectbox("Selecione uma vaga para ver os detalhes:", opcoes_vagas)
-    
-    # Pegamos o índice da escolha para buscar a descrição correta no DataFrame
-    idx = opcoes_vagas.index(escolha)
-    detalhes = df_vagas.iloc[idx]
-    
-    # Exibição elegante da descrição
-    if detalhes['descricao']:
-        st.info(f"**Descrição da vaga:**\n\n{detalhes['descricao']}")
-    else:
-        st.warning("Esta candidatura não possui uma descrição detalhada.")
-    
-    st.markdown("---")
-
-# --- FIM DO TRECHO ---
-
     
     if not df_vagas.empty:
-        # Reordenação para exibição
-        cols_order = ["vaga", "data_cand", "plataforma", "empresa", "descricao", "link_vaga", "recrutador", "contato_recrutador", "site_empresa"]
-        st.data_editor(df_vagas[cols_order], use_container_width=True)
+        # 1. TABELA (Sem a coluna descrição para ficar limpa)
+        cols_display = ["vaga", "data_cand", "plataforma", "empresa", "link_vaga", "recrutador", "contato_recrutador", "site_empresa"]
+        st.data_editor(df_vagas[cols_display], use_container_width=True)
         
-        # Gráficos
-        st.divider()
+        # 2. BLOCO DE DETALHES (Abaixo da Tabela)
+        st.markdown("---")
+        st.subheader("📝 Detalhes da Candidatura")
+        
+        opcoes_vagas = df_vagas.apply(
+            lambda x: f"{x['vaga']} @ {x['empresa'] if x['empresa'] else 'N/A'}", axis=1
+        ).tolist()
+        
+        escolha = st.selectbox("Selecione uma vaga para ver os detalhes completos:", opcoes_vagas)
+        idx = opcoes_vagas.index(escolha)
+        detalhes = df_vagas.iloc[idx]
+        
+        if detalhes['descricao']:
+            st.info(f"**Descrição da vaga:**\n\n{detalhes['descricao']}")
+        else:
+            st.warning("Esta candidatura não possui uma descrição detalhada.")
+        
+        st.markdown("---")
+
+        # 3. GRÁFICOS
         g1, g2 = st.columns(2)
         with g1:
             fig_p = px.pie(df_vagas, names='plataforma', title='Por Plataforma', hole=0.4)
