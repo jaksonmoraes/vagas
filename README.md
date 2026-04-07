@@ -44,15 +44,17 @@ smtp_port = 587
 smtp_user = "seu-email@gmail.com"
 smtp_pass = "sua-senha-de-app"
 
+```
 
 🏗️ Estrutura do Banco (SQL)
 O sistema espera as tabelas usuarios, plataformas_usuario e candidaturas.
 Dica: Certifique-se de aplicar a CONSTRAINT de formato de e-mail no banco para garantir a integridade dos dados.
 
+```
 -- Exemplo de constraint de e-mail aplicada
 ALTER TABLE usuarios ADD CONSTRAINT email_check 
 CHECK (email ~* '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[a-zA-Z]{2,}$');
-
+```
 
 ✒️ Autor
-**Jakson Moraes - GitHub**
+**Jakson Moraes - [GitHub](https://github.com/jaksonmoraes/vagas)**
